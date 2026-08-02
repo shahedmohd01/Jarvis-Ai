@@ -145,7 +145,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let currentChatId = null;
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
-    let userApiKey = localStorage.getItem('mini_gpt_apikey') || '';
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.2');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
     let currentAttachment = null; // { mime_type, data, name }
@@ -248,7 +247,6 @@ document.addEventListener('DOMContentLoaded', () => {
         temperatureSlider.value = temperature;
         tempVal.textContent = temperature;
         systemInstructionInput.value = systemInstruction;
-        if (apiKeyInput) apiKeyInput.value = userApiKey;
         updateCurrentModelLabel(selectedModel);
 
         // Check Backend Health & API Key Status — runs once on load, then every 30s
@@ -758,61 +756,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateStr = clientTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             const timeStr = clientTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-            // Model name mapping (client uses friendly names; API uses real IDs)
-            const modelMap = {
-                'gemini-3.5-flash-lite': 'gemini-2.0-flash-lite',
-                'gemini-2.5-flash-lite': 'gemini-2.0-flash-lite',
-                'gemini-3.1-flash-lite': 'gemini-2.0-flash-lite',
+
+            // Always use backend (Vercel /api/chat serverless or local Python server)
+            const payload = {
+                messages: activeChat.messages,
+                model: selectedModel,
+                temperature,
+                system_instruction: systemInstruction,
+                client_time: { date: dateStr, time: timeStr }
             };
-            const apiModel = modelMap[selectedModel] || selectedModel;
-
-            const dateCtx = `\n\n[Context: Today is ${dateStr}, local time is ${timeStr}. Only mention this if the user specifically asks about the date or time.]`;
-            const baseSys = 'You are Jarvis AI, a helpful AI assistant powered by Google Gemini. Be natural, concise, and conversational. Do NOT introduce yourself or mention the date/time unless the user directly asks. If asked your name or who made you, say Jarvis AI powered by Google Gemini.';
-            const sysText = baseSys + (systemInstruction ? ' ' + systemInstruction : '') + dateCtx;
-
-            // Build Gemini contents array
-            const contents = activeChat.messages.map(m => {
-                const parts = [];
-                if (m.image && m.image.data) {
-                    parts.push({ inlineData: { mimeType: m.image.mime_type, data: m.image.data } });
-                }
-                if (m.content) parts.push({ text: m.content });
-                return { role: m.role === 'model' ? 'model' : 'user', parts };
+            const response = await fetch(getApiUrl('/api/chat'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: abortController.signal
             });
-
-            // Determine which API key and endpoint to use
-            const key = userApiKey.trim();
-            let response;
-
-            if (key) {
-                // --- DIRECT GEMINI API (fast, no cold start) ---
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
-                response = await fetch(geminiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents,
-                        systemInstruction: { parts: [{ text: sysText }] },
-                        generationConfig: { temperature }
-                    }),
-                    signal: abortController.signal
-                });
-            } else {
-                // --- FALLBACK: Vercel /api/chat (serverless) or Render backend ---
-                const payload = {
-                    messages: activeChat.messages,
-                    model: selectedModel,
-                    temperature,
-                    system_instruction: systemInstruction,
-                    client_time: { date: dateStr, time: timeStr }
-                };
-                response = await fetch(getApiUrl('/api/chat'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload),
-                    signal: abortController.signal
-                });
-            }
 
             if (!response.ok) {
                 const errJson = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
@@ -1242,10 +1200,6 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSettingsBtn.addEventListener('click', () => {
         selectedModel = modelSelect.value;
         temperature = parseFloat(temperatureSlider.value);
-        if (apiKeyInput) {
-            userApiKey = apiKeyInput.value.trim();
-            localStorage.setItem('mini_gpt_apikey', userApiKey);
-        }
 
         localStorage.setItem('mini_gpt_model', selectedModel);
         localStorage.setItem('mini_gpt_temp', temperature);
@@ -1254,13 +1208,6 @@ document.addEventListener('DOMContentLoaded', () => {
         checkBackendStatus();
         settingsModal.classList.remove('show');
     });
-
-    // Toggle API key visibility
-    if (togglePasswordBtn && apiKeyInput) {
-        togglePasswordBtn.addEventListener('click', () => {
-            apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
-        });
-    }
 
     // Persona Modal
     personaBtn.addEventListener('click', () => personaModal.classList.add('show'));
