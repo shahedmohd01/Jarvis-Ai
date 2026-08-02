@@ -265,19 +265,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Dynamic API URL Resolver
-    // Production backend deployed on Render.com — API key lives there, never exposed to users
+    // Priority: 1) Local dev  2) Vercel (same-origin /api/)  3) Render fallback
     const RENDER_BACKEND_URL = 'https://jarvis-ai-backend-8ndm.onrender.com';
 
     function getApiUrl(path) {
-        // Local file or local dev server → use local Python backend
+        // Local file → use local Python backend
         if (window.location.protocol === 'file:') {
             return `http://127.0.0.1:8000${path}`;
         }
+        // Local dev server → use local Python backend
         if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
             const port = window.location.port && window.location.port !== '80' ? `:${window.location.port}` : ':8000';
             return `http://127.0.0.1${port}${path}`;
         }
-        // GitHub Pages or any other static host → use Render backend
+        // Vercel deployment → use same-origin serverless functions (e.g. /api/chat, /api/health)
+        if (window.location.hostname.endsWith('.vercel.app') || window.location.hostname.endsWith('vercel.app')) {
+            return path; // same-origin /api/chat, /api/health
+        }
+        // GitHub Pages or other static hosts → use Render backend
         return `${RENDER_BACKEND_URL}${path}`;
     }
 
@@ -792,7 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     signal: abortController.signal
                 });
             } else {
-                // --- FALLBACK: Render backend ---
+                // --- FALLBACK: Vercel /api/chat (serverless) or Render backend ---
                 const payload = {
                     messages: activeChat.messages,
                     model: selectedModel,
@@ -800,7 +805,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     system_instruction: systemInstruction,
                     client_time: { date: dateStr, time: timeStr }
                 };
-                response = await fetch(getApiUrl('/api/chat/stream'), {
+                response = await fetch(getApiUrl('/api/chat'), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload),
