@@ -171,6 +171,17 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
                 "If asked about your name, identity, or who created you, always respond that you are Jarvis AI, powered by Google Gemini. "
             )
             system_instruction = identity_prefix + system_instruction.strip()
+
+        # Dynamically inject current date and local time context for the LLM
+        import datetime
+        current_time = datetime.datetime.now()
+        date_str = current_time.strftime("%A, %B %d, %Y")
+        time_str = current_time.strftime("%I:%M %p")
+        datetime_context = (
+            f"\n\n[System Context: The current date is {date_str} and the current local time is {time_str}. "
+            "Use this date/time context when responding to queries about dates, times, days, or schedules.]"
+        )
+        system_instruction += datetime_context
             
         model = body.get("model", "gemini-3.5-flash-lite")
         # Fallback translations for models that are unstable or hang on Google's API servers
