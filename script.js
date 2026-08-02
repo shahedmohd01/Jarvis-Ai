@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let currentChatId = null;
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
-    let apiKey = localStorage.getItem('mini_gpt_api_key') || '';
+    // API key is managed server-side on Render — not stored in the browser
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.7');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
     let currentAttachment = null; // { mime_type, data, name }
@@ -237,7 +237,6 @@ document.addEventListener('DOMContentLoaded', () => {
         document.documentElement.setAttribute('data-theme', savedTheme);
 
         // Load Settings to Inputs
-        apiKeyInput.value = apiKey;
         modelSelect.value = selectedModel;
         temperatureSlider.value = temperature;
         tempVal.textContent = temperature;
@@ -257,34 +256,45 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Dynamic API URL Resolver
+    // Production backend deployed on Render.com — API key lives there, never exposed to users
+    const RENDER_BACKEND_URL = 'https://jarvis-ai-backend.onrender.com';
+
     function getApiUrl(path) {
+        // Local file or local dev server → use local Python backend
         if (window.location.protocol === 'file:') {
             return `http://127.0.0.1:8000${path}`;
         }
-        if (window.location.port && window.location.port !== '8000') {
-            const host = window.location.hostname || '127.0.0.1';
-            return `http://${host}:8000${path}`;
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            const port = window.location.port && window.location.port !== '80' ? `:${window.location.port}` : ':8000';
+            return `http://127.0.0.1${port}${path}`;
         }
-        return path;
+        // GitHub Pages or any other static host → use Render backend
+        return `${RENDER_BACKEND_URL}${path}`;
     }
 
     async function checkBackendStatus() {
+        const settingsBadge = document.getElementById('backendStatusLabel');
+        const settingsBadgeWrap = document.getElementById('backendStatusBadge');
         try {
-            const headers = {};
-            if (apiKey) headers['x-gemini-api-key'] = apiKey;
-            const res = await fetch(getApiUrl('/api/health'), { headers });
+            const res = await fetch(getApiUrl('/api/health'));
             const data = await res.json();
 
             if (data.api_key_configured) {
                 apiStatusText.textContent = 'API Ready';
                 apiStatusText.style.color = '#10b981';
+                if (settingsBadge) settingsBadge.textContent = '✓ Connected — API key active';
+                if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#10b981';
             } else {
-                apiStatusText.textContent = 'Key Required';
+                apiStatusText.textContent = 'Backend Online';
                 apiStatusText.style.color = '#f59e0b';
+                if (settingsBadge) settingsBadge.textContent = '⚠ Backend reachable but no API key set';
+                if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#f59e0b';
             }
         } catch (e) {
             apiStatusText.textContent = 'Offline';
             apiStatusText.style.color = '#ef4444';
+            if (settingsBadge) settingsBadge.textContent = '✗ Backend offline — try again later';
+            if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
         }
     }
 
@@ -590,12 +600,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 messages: activeChat.messages,
                 model: selectedModel,
                 temperature: temperature,
-                system_instruction: systemInstruction,
-                api_key: apiKey
+                system_instruction: systemInstruction
+                // api_key intentionally omitted — key lives on the server
             };
 
             const headers = { 'Content-Type': 'application/json' };
-            if (apiKey) headers['x-gemini-api-key'] = apiKey;
 
             const response = await fetch(getApiUrl('/api/chat/stream'), {
                 method: 'POST',
@@ -664,7 +673,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 let msg = err.message || 'Unknown error';
                 if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-                    msg = 'Failed to connect to backend server (http://127.0.0.1:8000). Please make sure `python run.py` is running.';
+                    msg = 'Failed to connect to the AI backend. The server may be sleeping (free tier). Please wait 30 seconds and try again.';
                 }
                 fullAiText += `\n\n**Error**: ${msg}`;
             }
@@ -924,20 +933,12 @@ document.addEventListener('DOMContentLoaded', () => {
     closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.remove('show'));
     cancelSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('show'));
 
-    togglePasswordBtn.addEventListener('click', () => {
-        const type = apiKeyInput.getAttribute('type');
-        apiKeyInput.setAttribute('type', type === 'password' ? 'text' : 'password');
-        togglePasswordBtn.textContent = type === 'password' ? 'Hide' : 'Show';
-    });
-
     temperatureSlider.addEventListener('input', (e) => tempVal.textContent = e.target.value);
 
     saveSettingsBtn.addEventListener('click', () => {
-        apiKey = apiKeyInput.value.trim();
         selectedModel = modelSelect.value;
         temperature = parseFloat(temperatureSlider.value);
 
-        localStorage.setItem('mini_gpt_api_key', apiKey);
         localStorage.setItem('mini_gpt_model', selectedModel);
         localStorage.setItem('mini_gpt_temp', temperature);
 

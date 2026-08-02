@@ -368,13 +368,14 @@
 
             <div class="modal-body">
                 <div class="form-group">
-                    <label for="apiKeyInput">Gemini API Key</label>
-                    <div class="password-input-wrapper">
-                        <input type="password" id="apiKeyInput" placeholder="AIzaSy...">
-                        <button class="toggle-password-btn" id="togglePasswordBtn">Show</button>
+                    <label>AI Backend</label>
+                    <div class="backend-status-badge" id="backendStatusBadge">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        <span id="backendStatusLabel">Checking connection...</span>
                     </div>
-                    <span class="form-help">Get your free key from <a href="https://aistudio.google.com/"
-                            target="_blank" rel="noopener">Google AI Studio</a>. Stored locally in your browser.</span>
+                    <span class="form-help">The AI backend is managed centrally — no API key needed.</span>
                 </div>
 
                 <div class="form-group">
