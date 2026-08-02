@@ -1,6 +1,141 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+import { getAuth, signInAnonymously, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+
+// ==========================================================================
+// FIREBASE CLIENT CONFIGURATION
+// ==========================================================================
+// Replace this placeholder config with your actual Firebase Project keys from Firebase Console
+const firebaseConfig = {
+    apiKey: "YOUR_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    storageBucket: "YOUR_PROJECT_ID.appspot.com",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+};
+
+// Check if placeholder credentials are still present
+const isFirebasePlaceholder = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("YOUR_");
+
+let auth;
+if (!isFirebasePlaceholder) {
+    try {
+        const app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+    } catch (e) {
+        console.error("Firebase initialization failed:", e);
+    }
+}
+
+// ==========================================================================
+// AUTHENTICATION SIMULATOR (MOCK AUTH)
+// ==========================================================================
+// This simulator runs if Firebase credentials are not set yet, so you can test Guest, Email,
+// and Google logins immediately without setting up a Firebase backend first.
+const mockAuth = {
+    currentUser: null,
+    listeners: [],
+    onAuthStateChanged(callback) {
+        this.listeners.push(callback);
+        // Dispatch current state asynchronously
+        setTimeout(() => callback(this.currentUser), 100);
+        return () => {
+            this.listeners = this.listeners.filter(l => l !== callback);
+        };
+    },
+    updateState(user) {
+        this.currentUser = user;
+        this.listeners.forEach(callback => callback(user));
+    },
+    async signInAnonymously() {
+        this.updateState({
+            uid: "guest_session_user",
+            isAnonymous: true,
+            displayName: "Guest User",
+            email: "",
+            photoURL: ""
+        });
+        return { user: this.currentUser };
+    },
+    async signInWithGoogle() {
+        this.updateState({
+            uid: "google_oauth_user",
+            isAnonymous: false,
+            displayName: "Jarvis Tester",
+            email: "tester@gmail.com",
+            photoURL: "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png"
+        });
+        return { user: this.currentUser };
+    },
+    async signInWithEmail(email, password) {
+        this.updateState({
+            uid: "email_user_" + btoa(email).replace(/=/g, ""),
+            isAnonymous: false,
+            displayName: email.split('@')[0],
+            email: email,
+            photoURL: ""
+        });
+        return { user: this.currentUser };
+    },
+    async signUpWithEmail(email, password) {
+        return this.signInWithEmail(email, password);
+    },
+    async signOut() {
+        this.updateState(null);
+    }
+};
+
+// Unified Auth Interface
+const authManager = {
+    onAuthStateChanged(callback) {
+        if (!isFirebasePlaceholder && auth) {
+            return onAuthStateChanged(auth, callback);
+        } else {
+            return mockAuth.onAuthStateChanged(callback);
+        }
+    },
+    async signInAnonymously() {
+        if (!isFirebasePlaceholder && auth) {
+            return signInAnonymously(auth);
+        } else {
+            return mockAuth.signInAnonymously();
+        }
+    },
+    async signInWithGoogle() {
+        if (!isFirebasePlaceholder && auth) {
+            const provider = new GoogleAuthProvider();
+            return signInWithPopup(auth, provider);
+        } else {
+            return mockAuth.signInWithGoogle();
+        }
+    },
+    async signInWithEmail(email, password) {
+        if (!isFirebasePlaceholder && auth) {
+            return signInWithEmailAndPassword(auth, email, password);
+        } else {
+            return mockAuth.signInWithEmail(email, password);
+        }
+    },
+    async signUpWithEmail(email, password) {
+        if (!isFirebasePlaceholder && auth) {
+            return createUserWithEmailAndPassword(auth, email, password);
+        } else {
+            return mockAuth.signUpWithEmail(email, password);
+        }
+    },
+    async signOut() {
+        if (!isFirebasePlaceholder && auth) {
+            return signOut(auth);
+        } else {
+            return mockAuth.signOut();
+        }
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     // State Variables
-    let chats = JSON.parse(localStorage.getItem('mini_gpt_chats') || '[]');
+    let chats = [];
+    let currentUser = null;
     let currentChatId = null;
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
     let apiKey = localStorage.getItem('mini_gpt_api_key') || '';
@@ -111,15 +246,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Check Backend Health & API Key Status
         checkBackendStatus();
 
-        // Render History List
-        renderHistory();
-
-        // Create or Load Active Chat
-        if (chats.length > 0) {
-            selectChat(chats[0].id);
-        } else {
-            createNewChat();
-        }
+        // Initialize Firebase Authentication State Observer
+        authManager.onAuthStateChanged((user) => {
+            handleAuthStateChanged(user);
+        });
 
         // Initialize microphone vs send button visibility
         updateInputDisplay();
@@ -257,7 +387,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function saveChatsToStorage() {
-        localStorage.setItem('mini_gpt_chats', JSON.stringify(chats));
+        const key = currentUser ? `mini_gpt_chats_${currentUser.uid}` : 'mini_gpt_chats_guest';
+        localStorage.setItem(key, JSON.stringify(chats));
     }
 
     // --- MESSAGES RENDERING ---
@@ -1016,6 +1147,200 @@ document.addEventListener('DOMContentLoaded', () => {
                 abortListening(); // Stop instantly
             } else {
                 startListening();
+            }
+        });
+    }
+
+    // ==========================================================================
+    // FIREBASE AUTHENTICATION LOGIC & HANDLERS
+    // ==========================================================================
+    function handleAuthStateChanged(user) {
+        const authOverlay = document.getElementById('authOverlay');
+        const userNameEl = document.getElementById('userName');
+        const userEmailEl = document.getElementById('userEmail');
+        const userAvatarImg = document.getElementById('userAvatarImg');
+        const userAvatarInitial = document.getElementById('userAvatarInitial');
+        const logoutBtn = document.getElementById('logoutBtn');
+        const authError = document.getElementById('authError');
+
+        if (authError) {
+            authError.style.display = 'none';
+            authError.textContent = '';
+        }
+
+        if (user) {
+            currentUser = user;
+            if (authOverlay) authOverlay.style.display = 'none';
+            if (logoutBtn) logoutBtn.style.display = 'flex';
+
+            // Set user profile info
+            const displayName = user.displayName || (user.isAnonymous ? 'Guest User' : user.email.split('@')[0]);
+            if (userNameEl) userNameEl.textContent = displayName;
+            
+            if (user.email && !user.isAnonymous) {
+                if (userEmailEl) {
+                    userEmailEl.textContent = user.email;
+                    userEmailEl.style.display = 'block';
+                }
+            } else {
+                if (userEmailEl) userEmailEl.style.display = 'none';
+            }
+
+            if (user.photoURL) {
+                if (userAvatarImg) {
+                    userAvatarImg.src = user.photoURL;
+                    userAvatarImg.style.display = 'block';
+                }
+                if (userAvatarInitial) userAvatarInitial.style.display = 'none';
+            } else {
+                if (userAvatarImg) userAvatarImg.style.display = 'none';
+                if (userAvatarInitial) {
+                    userAvatarInitial.style.display = 'block';
+                    userAvatarInitial.textContent = user.isAnonymous ? 'G' : displayName.charAt(0).toUpperCase();
+                }
+            }
+
+            // Load user-specific chat history
+            loadUserChats(user.uid);
+        } else {
+            currentUser = null;
+            if (authOverlay) authOverlay.style.display = 'flex';
+            if (logoutBtn) logoutBtn.style.display = 'none';
+
+            if (userNameEl) userNameEl.textContent = 'Sign In';
+            if (userEmailEl) userEmailEl.style.display = 'none';
+            if (userAvatarImg) userAvatarImg.style.display = 'none';
+            if (userAvatarInitial) {
+                userAvatarInitial.style.display = 'block';
+                userAvatarInitial.textContent = 'AI';
+            }
+
+            // Clear active chat viewport & history
+            chats = [];
+            currentChatId = null;
+            if (messagesList) messagesList.innerHTML = '';
+            if (welcomeContainer) welcomeContainer.style.display = 'block';
+            if (messagesList) messagesList.style.display = 'none';
+            renderHistory();
+        }
+    }
+
+    function loadUserChats(uid) {
+        chats = JSON.parse(localStorage.getItem('mini_gpt_chats_' + uid) || '[]');
+        renderHistory();
+        if (chats.length > 0) {
+            selectChat(chats[0].id);
+        } else {
+            createNewChat();
+        }
+    }
+
+    // Auth Form & Social Buttons Listeners
+    const authTabSignIn = document.getElementById('authTabSignIn');
+    const authTabSignUp = document.getElementById('authTabSignUp');
+    const authForm = document.getElementById('authForm');
+    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const authEmail = document.getElementById('authEmail');
+    const authPassword = document.getElementById('authPassword');
+    const authGoogleBtn = document.getElementById('authGoogleBtn');
+    const authGuestBtn = document.getElementById('authGuestBtn');
+    const authError = document.getElementById('authError');
+
+    let isSignUpMode = false;
+
+    if (authTabSignIn && authTabSignUp) {
+        authTabSignIn.addEventListener('click', () => {
+            isSignUpMode = false;
+            authTabSignIn.classList.add('active');
+            authTabSignUp.classList.remove('active');
+            if (authSubmitBtn) authSubmitBtn.textContent = 'Sign In';
+        });
+
+        authTabSignUp.addEventListener('click', () => {
+            isSignUpMode = true;
+            authTabSignUp.classList.add('active');
+            authTabSignIn.classList.remove('active');
+            if (authSubmitBtn) authSubmitBtn.textContent = 'Sign Up';
+        });
+    }
+
+    if (authForm) {
+        authForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = authEmail.value.trim();
+            const password = authPassword.value;
+
+            if (!email || !password) return;
+
+            if (authSubmitBtn) {
+                authSubmitBtn.disabled = true;
+                authSubmitBtn.textContent = isSignUpMode ? 'Registering...' : 'Signing In...';
+            }
+            if (authError) authError.style.display = 'none';
+
+            try {
+                if (isSignUpMode) {
+                    await authManager.signUpWithEmail(email, password);
+                } else {
+                    await authManager.signInWithEmail(email, password);
+                }
+            } catch (err) {
+                console.error("Auth error:", err);
+                if (authError) {
+                    authError.textContent = err.message || "An authentication error occurred.";
+                    authError.style.display = 'block';
+                }
+            } finally {
+                if (authSubmitBtn) {
+                    authSubmitBtn.disabled = false;
+                    authSubmitBtn.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
+                }
+            }
+        });
+    }
+
+    if (authGoogleBtn) {
+        authGoogleBtn.addEventListener('click', async () => {
+            authGoogleBtn.disabled = true;
+            if (authError) authError.style.display = 'none';
+            try {
+                await authManager.signInWithGoogle();
+            } catch (err) {
+                console.error("Google Auth error:", err);
+                if (authError) {
+                    authError.textContent = err.message || "Failed to sign in with Google.";
+                    authError.style.display = 'block';
+                }
+            } finally {
+                authGoogleBtn.disabled = false;
+            }
+        });
+    }
+
+    if (authGuestBtn) {
+        authGuestBtn.addEventListener('click', async () => {
+            authGuestBtn.disabled = true;
+            if (authError) authError.style.display = 'none';
+            try {
+                await authManager.signInAnonymously();
+            } catch (err) {
+                console.error("Guest Auth error:", err);
+                if (authError) {
+                    authError.textContent = err.message || "Failed to continue as Guest.";
+                    authError.style.display = 'block';
+                }
+            } finally {
+                authGuestBtn.disabled = false;
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                await authManager.signOut();
+            } catch (err) {
+                console.error("Sign out error:", err);
             }
         });
     }
