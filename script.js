@@ -321,6 +321,22 @@ document.addEventListener('DOMContentLoaded', () => {
         currentModelName.textContent = names[modelId] || modelId;
     }
 
+    // --- RANDOM WELCOME GREETINGS (Like Real Gemini) ---
+    const WELCOME_GREETINGS = [
+        "Hi There Meet Jarvis Ai",
+        "How can I help you today?",
+        "What's on your mind today?",
+        "What can I write, explain, or code today?",
+        "Need help writing, coding, or brainstorming? Just ask!"
+    ];
+
+    function randomizeWelcomeMessage() {
+        const welcomeTitle = document.querySelector('.welcome-title');
+        if (!welcomeTitle) return;
+        const randomIndex = Math.floor(Math.random() * WELCOME_GREETINGS.length);
+        welcomeTitle.innerHTML = WELCOME_GREETINGS[randomIndex];
+    }
+
     // --- CHAT MANAGEMENT ---
     function createNewChat() {
         const newChat = {
@@ -333,6 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
         saveChatsToStorage();
         renderHistory();
         selectChat(newChat.id);
+        randomizeWelcomeMessage();
     }
 
     function selectChat(chatId) {
@@ -348,6 +365,7 @@ document.addEventListener('DOMContentLoaded', () => {
             welcomeContainer.style.display = 'block';
             messagesList.style.display = 'none';
             messagesList.innerHTML = '';
+            randomizeWelcomeMessage();
         } else {
             welcomeContainer.style.display = 'none';
             messagesList.style.display = 'flex';

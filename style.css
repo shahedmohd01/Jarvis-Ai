@@ -1885,3 +1885,33 @@ html, body {
     border: 1px solid var(--border-color) !important;
     padding: 0 !important;
 }
+
+/* ==========================================================================
+   STOP RESPONSE VISIBILITY OVERRIDE
+   ========================================================================== */
+.input-box.has-input .send-btn,
+.send-btn.generating-stop-btn {
+    display: flex !important;
+}
+
+/* ==========================================================================
+   MOBILE HEADER ADJUSTMENTS
+   ========================================================================== */
+@media (max-width: 768px) {
+    #currentModelName {
+        max-width: 110px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: inline-block;
+    }
+    
+    .model-picker-btn {
+        padding: 6px 10px;
+        font-size: 0.82rem;
+    }
+    
+    .header-left {
+        gap: 6px;
+    }
+}
