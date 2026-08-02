@@ -731,11 +731,19 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             abortController = new AbortController();
 
+            const clientTime = new Date();
+            const dateStr = clientTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            const timeStr = clientTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+
             const payload = {
                 messages: activeChat.messages,
                 model: selectedModel,
                 temperature: temperature,
-                system_instruction: systemInstruction
+                system_instruction: systemInstruction,
+                client_time: {
+                    date: dateStr,
+                    time: timeStr
+                }
                 // api_key intentionally omitted — key lives on the server
             };
 

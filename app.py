@@ -173,10 +173,16 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
             system_instruction = identity_prefix + system_instruction.strip()
 
         # Dynamically inject current date and local time context for the LLM
-        import datetime
-        current_time = datetime.datetime.now()
-        date_str = current_time.strftime("%A, %B %d, %Y")
-        time_str = current_time.strftime("%I:%M %p")
+        client_time = body.get("client_time")
+        if client_time and isinstance(client_time, dict):
+            date_str = client_time.get("date")
+            time_str = client_time.get("time")
+        else:
+            import datetime
+            current_time = datetime.datetime.now()
+            date_str = current_time.strftime("%A, %B %d, %Y")
+            time_str = current_time.strftime("%I:%M %p")
+            
         datetime_context = (
             f"\n\n[System Context: The current date is {date_str} and the current local time is {time_str}. "
             "Use this date/time context when responding to queries about dates, times, days, or schedules.]"
