@@ -182,9 +182,21 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if os.path.exists(static_dir):
-    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+@app.get("/")
+async def get_index():
+    return FileResponse("index.html")
+
+@app.get("/index.html")
+async def get_index_html():
+    return FileResponse("index.html")
+
+@app.get("/style.css")
+async def get_style():
+    return FileResponse("style.css", media_type="text/css")
+
+@app.get("/script.js")
+async def get_script():
+    return FileResponse("script.js", media_type="application/javascript")
 
 if __name__ == "__main__":
     import uvicorn
