@@ -879,19 +879,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- EVENT LISTENERS ---
 
-    // Auto Resize Input Textarea
+    // Auto Resize Input Textarea & Mobile Keyboard Layout Sync
     userInput.addEventListener('input', () => {
         userInput.style.height = 'auto';
         userInput.style.height = Math.min(userInput.scrollHeight, 180) + 'px';
         updateInputDisplay();
     });
 
+    // Reset viewport scroll when mobile keyboard dismisses to prevent sticky floating elements
+    function resetMobileViewportScroll() {
+        setTimeout(() => {
+            window.scrollTo(0, 0);
+            document.body.scrollTop = 0;
+            if (chatViewport) {
+                chatViewport.scrollTop = chatViewport.scrollHeight;
+            }
+        }, 80);
+    }
+
+    userInput.addEventListener('blur', () => {
+        resetMobileViewportScroll();
+    });
+
     userInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
+            userInput.blur(); // Dismiss soft keyboard on enter submit
             sendMessage();
         }
     });
+
+    // VisualViewport listener for Mobile Safari & Chrome soft keyboard open/close sync
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', () => {
+            if (window.innerWidth <= 768) {
+                if (chatViewport) scrollToBottom();
+            }
+        });
+        window.visualViewport.addEventListener('scroll', () => {
+            if (window.innerWidth <= 768 && document.activeElement !== userInput) {
+                window.scrollTo(0, 0);
+            }
+        });
+    }
 
     sendBtn.addEventListener('click', () => {
         if (isGenerating && abortController) {
@@ -1104,10 +1134,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cameraBtn) {
         cameraBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            startCamera('environment'); // Open main camera by default
             if (attachmentMenu) {
                 attachmentMenu.classList.remove('show');
                 addBtnIcon.style.transform = 'none';
+            }
+            // Directly trigger mobile device camera app
+            if (nativeCameraInput) {
+                nativeCameraInput.click();
+            } else {
+                startCamera('environment');
             }
         });
     }
