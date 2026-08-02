@@ -11,6 +11,8 @@ from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from google import genai
+from google.genai import types
 
 # Load environment variables
 load_dotenv()
@@ -162,9 +164,6 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
 
     async def stream_generator():
         try:
-            from google import genai
-            from google.genai import types
-
             client = genai.Client(api_key=api_key)
             
             last_image_idx = -1
