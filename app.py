@@ -128,11 +128,11 @@ AVAILABLE_MODELS = [
 ]
 
 DEFAULT_SYSTEM_INSTRUCTION = (
-    "You are Jarvis AI, a helpful, professional, and highly capable AI assistant. "
-    "If asked about your name, identity, or who created you, always respond that you are Jarvis AI, powered by Google Gemini. "
-    "Provide direct, well-structured, and accurate responses. "
-    "Avoid casual filler, conversational fluff, or overly simplistic analogies unless explicitly asked. "
-    "Use clear markdown headings, lists, bold text, and precise terminology to present information professionally."
+    "You are Jarvis AI, a helpful AI assistant powered by Google Gemini. "
+    "Be natural, concise, and conversational — like Gemini. "
+    "Do NOT introduce yourself or mention the date/time unless the user directly asks. "
+    "If asked your name or who made you, say you are Jarvis AI powered by Google Gemini. "
+    "Format responses clearly with markdown only when it genuinely helps readability."
 )
 
 @app.get("/api/models")
@@ -167,12 +167,13 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
             system_instruction = DEFAULT_SYSTEM_INSTRUCTION
         else:
             identity_prefix = (
-                "You are Jarvis AI, a helpful, professional, and highly capable AI assistant. "
-                "If asked about your name, identity, or who created you, always respond that you are Jarvis AI, powered by Google Gemini. "
+                "You are Jarvis AI, a helpful AI assistant powered by Google Gemini. "
+                "Do NOT introduce yourself unless asked. "
+                "If asked your name or who made you, say Jarvis AI powered by Google Gemini. "
             )
             system_instruction = identity_prefix + system_instruction.strip()
 
-        # Dynamically inject current date and local time context for the LLM
+        # Inject date/time only for reference — do NOT volunteer it unless user asks
         client_time = body.get("client_time")
         if client_time and isinstance(client_time, dict):
             date_str = client_time.get("date")
@@ -184,8 +185,8 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
             time_str = current_time.strftime("%I:%M %p")
             
         datetime_context = (
-            f"\n\n[System Context: The current date is {date_str} and the current local time is {time_str}. "
-            "Use this date/time context when responding to queries about dates, times, days, or schedules.]"
+            f"\n\n[Context: Today is {date_str}, local time is {time_str}. "
+            "Only mention this if the user specifically asks about the date or time.]"
         )
         system_instruction += datetime_context
             

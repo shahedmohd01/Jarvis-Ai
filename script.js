@@ -760,14 +760,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Model name mapping (client uses friendly names; API uses real IDs)
             const modelMap = {
-                'gemini-3.5-flash-lite': 'gemini-3.1-flash-lite',
+                'gemini-3.5-flash-lite': 'gemini-2.0-flash-lite',
                 'gemini-2.5-flash-lite': 'gemini-2.0-flash-lite',
-                'gemini-3.1-flash-lite': 'gemini-3.1-flash-lite',
+                'gemini-3.1-flash-lite': 'gemini-2.0-flash-lite',
             };
             const apiModel = modelMap[selectedModel] || selectedModel;
 
-            const dateCtx = `\n\n[System Context: The current date is ${dateStr} and the current local time is ${timeStr}. Use this date/time context when responding to queries about dates, times, days, or schedules.]`;
-            const sysText = 'You are Jarvis AI, a helpful, professional, and highly capable AI assistant. If asked about your name, identity, or who created you, always respond that you are Jarvis AI, powered by Google Gemini. ' + (systemInstruction || '') + dateCtx;
+            const dateCtx = `\n\n[Context: Today is ${dateStr}, local time is ${timeStr}. Only mention this if the user specifically asks about the date or time.]`;
+            const baseSys = 'You are Jarvis AI, a helpful AI assistant powered by Google Gemini. Be natural, concise, and conversational. Do NOT introduce yourself or mention the date/time unless the user directly asks. If asked your name or who made you, say Jarvis AI powered by Google Gemini.';
+            const sysText = baseSys + (systemInstruction ? ' ' + systemInstruction : '') + dateCtx;
 
             // Build Gemini contents array
             const contents = activeChat.messages.map(m => {
