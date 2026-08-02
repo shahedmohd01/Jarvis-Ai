@@ -5,7 +5,6 @@ import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/fireb
 // ==========================================================================
 // FIREBASE CLIENT CONFIGURATION
 // ==========================================================================
-// Replace this placeholder config with your actual Firebase Project keys from Firebase Console
 const firebaseConfig = {
     apiKey: "AIzaSyDnjcsDE6uOTnsdJWvZP_QYdEQ6bkkOXK4",
     authDomain: "jarvis-ai-713ff.firebaseapp.com",
@@ -16,126 +15,37 @@ const firebaseConfig = {
     measurementId: "G-RQ2WN5S6V8"
 };
 
-// Check if placeholder credentials are still present
-const isFirebasePlaceholder = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("YOUR_");
-
 let auth;
 let db;
-if (!isFirebasePlaceholder) {
-    try {
-        const app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
-    } catch (e) {
-        console.error("Firebase initialization failed:", e);
-    }
+try {
+    const app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+} catch (e) {
+    console.error("Firebase initialization failed:", e);
 }
-
-// ==========================================================================
-// AUTHENTICATION SIMULATOR (MOCK AUTH)
-// ==========================================================================
-// This simulator runs if Firebase credentials are not set yet, so you can test Guest, Email,
-// and Google logins immediately without setting up a Firebase backend first.
-const mockAuth = {
-    currentUser: null,
-    listeners: [],
-    onAuthStateChanged(callback) {
-        this.listeners.push(callback);
-        // Dispatch current state asynchronously
-        setTimeout(() => callback(this.currentUser), 100);
-        return () => {
-            this.listeners = this.listeners.filter(l => l !== callback);
-        };
-    },
-    updateState(user) {
-        this.currentUser = user;
-        this.listeners.forEach(callback => callback(user));
-    },
-    async signInAnonymously() {
-        this.updateState({
-            uid: "guest_session_user",
-            isAnonymous: true,
-            displayName: "Guest User",
-            email: "",
-            photoURL: ""
-        });
-        return { user: this.currentUser };
-    },
-    async signInWithGoogle() {
-        this.updateState({
-            uid: "google_oauth_user",
-            isAnonymous: false,
-            displayName: "Jarvis Tester",
-            email: "tester@gmail.com",
-            photoURL: "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png"
-        });
-        return { user: this.currentUser };
-    },
-    async signInWithEmail(email, password) {
-        this.updateState({
-            uid: "email_user_" + btoa(email).replace(/=/g, ""),
-            isAnonymous: false,
-            displayName: email.split('@')[0],
-            email: email,
-            photoURL: ""
-        });
-        return { user: this.currentUser };
-    },
-    async signUpWithEmail(email, password) {
-        return this.signInWithEmail(email, password);
-    },
-    async signOut() {
-        this.updateState(null);
-    }
-};
 
 // Unified Auth Interface
 const authManager = {
     onAuthStateChanged(callback) {
-        if (!isFirebasePlaceholder && auth) {
-            return onAuthStateChanged(auth, callback);
-        } else {
-            return mockAuth.onAuthStateChanged(callback);
-        }
+        return onAuthStateChanged(auth, callback);
     },
     async signInAnonymously() {
-        if (!isFirebasePlaceholder && auth) {
-            return signInAnonymously(auth);
-        } else {
-            return mockAuth.signInAnonymously();
-        }
+        return signInAnonymously(auth);
     },
     async signInWithGoogle() {
-        if (!isFirebasePlaceholder && auth) {
-            const provider = new GoogleAuthProvider();
-            provider.setCustomParameters({
-                prompt: 'select_account'
-            });
-            return signInWithPopup(auth, provider);
-        } else {
-            return mockAuth.signInWithGoogle();
-        }
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        return signInWithPopup(auth, provider);
     },
     async signInWithEmail(email, password) {
-        if (!isFirebasePlaceholder && auth) {
-            return signInWithEmailAndPassword(auth, email, password);
-        } else {
-            return mockAuth.signInWithEmail(email, password);
-        }
+        return signInWithEmailAndPassword(auth, email, password);
     },
     async signUpWithEmail(email, password) {
-        if (!isFirebasePlaceholder && auth) {
-            return createUserWithEmailAndPassword(auth, email, password);
-        } else {
-            return mockAuth.signUpWithEmail(email, password);
-        }
+        return createUserWithEmailAndPassword(auth, email, password);
     },
     async signOut() {
-        if (!isFirebasePlaceholder && auth) {
-            return signOut(auth);
-        } else {
-            return mockAuth.signOut();
-        }
+        return signOut(auth);
     }
 };
 
@@ -147,7 +57,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.2');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
-    let currentAttachment = null; // { mime_type, data, name }
+    let currentAttachment = null;
     let isGenerating = false;
     let abortController = null;
 
@@ -190,8 +100,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const closeSettingsModalBtn = document.getElementById('closeSettingsModalBtn');
     const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const togglePasswordBtn = document.getElementById('togglePasswordBtn');
     const modelSelect = document.getElementById('modelSelect');
     const temperatureSlider = document.getElementById('temperatureSlider');
     const tempVal = document.getElementById('tempVal');
@@ -236,52 +144,34 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // --- INITIALIZATION ---
+    // Dynamic API URL Resolver
+    const RENDER_BACKEND_URL = 'https://jarvis-ai-backend-8ndm.onrender.com';
+
+    function getApiUrl(path) {
+        if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            return `http://127.0.0.1:8000${path}`;
+        }
+        return `${RENDER_BACKEND_URL}${path}`;
+    }
+
     function init() {
-        // Force Load Dark Theme
         document.documentElement.setAttribute('data-theme', 'dark');
         localStorage.setItem('mini_gpt_theme', 'dark');
 
-        // Load Settings to Inputs
-        modelSelect.value = selectedModel;
-        temperatureSlider.value = temperature;
-        tempVal.textContent = temperature;
-        systemInstructionInput.value = systemInstruction;
+        if (modelSelect) modelSelect.value = selectedModel;
+        if (temperatureSlider) temperatureSlider.value = temperature;
+        if (tempVal) tempVal.textContent = temperature;
+        if (systemInstructionInput) systemInstructionInput.value = systemInstruction;
         updateCurrentModelLabel(selectedModel);
 
-        // Check Backend Health & API Key Status — runs once on load, then every 30s
         checkBackendStatus();
         setInterval(checkBackendStatus, 30000);
 
-        // Initialize Firebase Authentication State Observer
         authManager.onAuthStateChanged((user) => {
             handleAuthStateChanged(user);
         });
 
-        // Initialize microphone vs send button visibility
         updateInputDisplay();
-    }
-
-    // Dynamic API URL Resolver
-    // Priority: 1) Local dev  2) Vercel (same-origin /api/)  3) Render fallback
-    const RENDER_BACKEND_URL = 'https://jarvis-ai-backend-8ndm.onrender.com';
-
-    function getApiUrl(path) {
-        // Local file → use local Python backend
-        if (window.location.protocol === 'file:') {
-            return `http://127.0.0.1:8000${path}`;
-        }
-        // Local dev server → use local Python backend
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-            const port = window.location.port && window.location.port !== '80' ? `:${window.location.port}` : ':8000';
-            return `http://127.0.0.1${port}${path}`;
-        }
-        // Vercel deployment → use same-origin serverless functions (e.g. /api/chat, /api/health)
-        if (window.location.hostname.endsWith('.vercel.app') || window.location.hostname.endsWith('vercel.app')) {
-            return path; // same-origin /api/chat, /api/health
-        }
-        // GitHub Pages or other static hosts → use Render backend
-        return `${RENDER_BACKEND_URL}${path}`;
     }
 
     async function checkBackendStatus() {
@@ -289,20 +179,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const settingsBadgeWrap = document.getElementById('backendStatusBadge');
         try {
             const res = await fetch(getApiUrl('/api/health'), { signal: AbortSignal.timeout(5000) });
-            const data = await res.json();
-
             if (res.ok) {
-                // Main header indicator
                 if (statusBadge) {
                     statusBadge.classList.remove('offline', 'generating');
                     statusBadge.classList.add('online');
                 }
-                // Sidebar status text
                 if (apiStatusText) {
                     apiStatusText.textContent = 'Online';
                     apiStatusText.style.color = '#10b981';
                 }
-                // Settings modal
                 if (settingsBadge) settingsBadge.textContent = '✓ Connected to AI Backend (Online)';
                 if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#10b981';
             } else {
@@ -314,17 +199,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function setOfflineState(settingsBadge, settingsBadgeWrap) {
-        // Main header indicator
         if (statusBadge) {
             statusBadge.classList.remove('online', 'generating');
             statusBadge.classList.add('offline');
         }
-        // Sidebar status text
         if (apiStatusText) {
             apiStatusText.textContent = 'Offline';
             apiStatusText.style.color = '#ef4444';
         }
-        // Settings modal
         if (settingsBadge) settingsBadge.textContent = '✗ Backend offline — try again later';
         if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
     }
@@ -339,12 +221,11 @@ document.addEventListener('DOMContentLoaded', () => {
             'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
             'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite'
         };
-        currentModelName.textContent = names[modelId] || modelId;
+        if (currentModelName) currentModelName.textContent = names[modelId] || modelId;
     }
 
-    // --- RANDOM WELCOME GREETINGS (Like Real Gemini) ---
     const WELCOME_GREETINGS = [
-        "Hi There Meet Jarvis Ai",
+        "Hi There, Meet Jarvis AI",
         "How can I help you today?",
         "What's on your mind today?",
         "What can I write, explain, or code today?",
@@ -358,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeTitle.innerHTML = WELCOME_GREETINGS[randomIndex];
     }
 
-    // --- CHAT MANAGEMENT ---
     function createNewChat() {
         const newChat = {
             id: 'chat_' + Date.now(),
@@ -377,24 +257,28 @@ document.addEventListener('DOMContentLoaded', () => {
         currentChatId = chatId;
         const activeChat = chats.find(c => c.id === chatId);
 
-        // Highlight active item in sidebar
         document.querySelectorAll('.history-item').forEach(item => {
             item.classList.toggle('active', item.dataset.id === chatId);
         });
 
         if (!activeChat || activeChat.messages.length === 0) {
-            welcomeContainer.style.display = 'block';
-            messagesList.style.display = 'none';
-            messagesList.innerHTML = '';
+            if (welcomeContainer) welcomeContainer.style.display = 'block';
+            if (messagesList) {
+                messagesList.style.display = 'none';
+                messagesList.innerHTML = '';
+            }
             randomizeWelcomeMessage();
         } else {
-            welcomeContainer.style.display = 'none';
-            messagesList.style.display = 'flex';
-            renderMessages(activeChat.messages);
+            if (welcomeContainer) welcomeContainer.style.display = 'none';
+            if (messagesList) {
+                messagesList.style.display = 'flex';
+                renderMessages(activeChat.messages);
+            }
         }
     }
 
     function renderHistory(filter = '') {
+        if (!historyList) return;
         historyList.innerHTML = '';
         const filtered = chats.filter(c => c.title.toLowerCase().includes(filter.toLowerCase()));
 
@@ -459,32 +343,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function syncChatsToCloud() {
         if (!currentUser) return;
-        
-        // 1. Sync to Firestore (if configured)
-        if (db && !isFirebasePlaceholder) {
+        if (db) {
             try {
                 const userDocRef = doc(db, "users", currentUser.uid);
                 const validChats = chats.filter(c => c && c.id);
                 await setDoc(userDocRef, { chats: validChats }, { merge: true });
             } catch (err) {
                 console.error("Failed to sync chats to Firestore:", err);
-            }
-        }
-
-        // 2. Sync to Backend SQLite (Reliable Fallback)
-        if (currentUser.email) {
-            try {
-                const validChats = chats.filter(c => c && c.id);
-                await fetch(getApiUrl('/api/sync/save'), {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        email: currentUser.email.toLowerCase().trim(),
-                        chats: validChats
-                    })
-                });
-            } catch (err) {
-                console.error("Failed to sync chats to custom backend:", err);
             }
         }
     }
@@ -498,8 +363,8 @@ document.addEventListener('DOMContentLoaded', () => {
         syncChatsToCloud();
     }
 
-    // --- MESSAGES RENDERING ---
     function renderMessages(messages) {
+        if (!messagesList) return;
         messagesList.innerHTML = '';
         messages.forEach((msg, idx) => {
             appendMessageUI(msg.role, msg.content, msg.image, false, idx);
@@ -545,7 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Copy and Edit actions bar below bubbles
         let actionsHtml = '';
         if (!isStreaming) {
             actionsHtml = `
@@ -556,14 +420,6 @@ document.addEventListener('DOMContentLoaded', () => {
                             <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                         </svg>
                     </button>
-                    ${isUser ? `
-                    <button class="action-btn edit-msg-btn" title="Edit message">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                    </button>
-                    ` : ''}
                 </div>
             `;
         }
@@ -576,46 +432,19 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
 
-        // Attach lightbox zoom listener for image attachments
-        const imgEl = row.querySelector('.message-image-attach');
-        if (imgEl) {
-            imgEl.style.cursor = 'zoom-in';
-            imgEl.addEventListener('click', () => {
-                const lightboxImage = document.getElementById('lightboxImage');
-                const imagePreviewModal = document.getElementById('imagePreviewModal');
-                if (lightboxImage && imagePreviewModal) {
-                    lightboxImage.src = imgEl.src;
-                    imagePreviewModal.classList.add('show');
-                }
-            });
-        }
-
-        // Attach action buttons event listeners
         const copyBtn = row.querySelector('.copy-msg-btn');
         if (copyBtn) {
             copyBtn.addEventListener('click', () => {
                 navigator.clipboard.writeText(content).then(() => {
                     const originalSvg = copyBtn.innerHTML;
-                    copyBtn.innerHTML = `
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#10b981" stroke-width="2">
-                            <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                    `;
+                    copyBtn.innerHTML = `✓`;
                     setTimeout(() => { copyBtn.innerHTML = originalSvg; }, 2000);
                 });
             });
         }
 
-        const editBtn = row.querySelector('.edit-msg-btn');
-        if (editBtn && isUser && index !== null) {
-            editBtn.addEventListener('click', () => {
-                startInlineEdit(row, content, index);
-            });
-        }
+        if (messagesList) messagesList.appendChild(row);
 
-        messagesList.appendChild(row);
-
-        // Add Copy Code Buttons for Assistant messages
         if (!isUser) {
             enhanceCodeBlocks(row);
         }
@@ -639,18 +468,14 @@ document.addEventListener('DOMContentLoaded', () => {
             header.className = 'code-header';
             header.innerHTML = `
                 <span>${langName}</span>
-                <button class="copy-code-btn">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    <span>Copy</span>
-                </button>
+                <button class="copy-code-btn">Copy</button>
             `;
 
             header.querySelector('.copy-code-btn').addEventListener('click', () => {
-                const textToCopy = codeEl.innerText;
-                navigator.clipboard.writeText(textToCopy).then(() => {
-                    const btnSpan = header.querySelector('.copy-code-btn span');
-                    btnSpan.textContent = 'Copied!';
-                    setTimeout(() => { btnSpan.textContent = 'Copy'; }, 2000);
+                navigator.clipboard.writeText(codeEl.innerText).then(() => {
+                    const btn = header.querySelector('.copy-code-btn');
+                    btn.textContent = 'Copied!';
+                    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
                 });
             });
 
@@ -659,7 +484,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function scrollToBottom() {
-        chatViewport.scrollTop = chatViewport.scrollHeight;
+        if (chatViewport) chatViewport.scrollTop = chatViewport.scrollHeight;
     }
 
     function setGeneratingState(busy) {
@@ -668,23 +493,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (busy) {
             sendBtn.classList.add('generating-stop-btn');
             sendBtn.title = 'Stop Generating';
-            sendBtn.innerHTML = `
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
-                    <rect x="5" y="5" width="14" height="14" rx="2" />
-                </svg>
-            `;
+            sendBtn.innerHTML = `■`;
             if (inputBox) inputBox.classList.add('has-input');
             if (userInput) userInput.disabled = true;
             if (statusBadge) statusBadge.classList.add('generating');
-            if (statusLabel) statusLabel.textContent = 'Gemini is typing...';
+            if (statusLabel) statusLabel.textContent = 'Jarvis is typing...';
         } else {
             sendBtn.classList.remove('generating-stop-btn');
             sendBtn.title = 'Send Message';
-            sendBtn.innerHTML = `
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-                </svg>
-            `;
+            sendBtn.innerHTML = `➤`;
             if (userInput) {
                 userInput.disabled = false;
                 userInput.focus();
@@ -695,27 +512,19 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- SEND MESSAGE & STREAMING ---
     async function sendMessage(textPrompt = null) {
-        if (isGenerating) return; // Lock out secondary generation requests
+        if (isGenerating) return;
         const text = textPrompt || userInput.value.trim();
         if (!text && !currentAttachment) return;
-
-        // Abort voice listening immediately on send to prevent transcription updates to cleared input
-        if (isListening) {
-            abortListening();
-        }
 
         const activeChat = chats.find(c => c.id === currentChatId);
         if (!activeChat) return;
 
-        // Auto update title if first message
         if (activeChat.messages.length === 0) {
             activeChat.title = text.slice(0, 30) + (text.length > 30 ? '...' : '');
             renderHistory();
         }
 
-        // Add user message to state
         const userMsg = {
             role: 'user',
             content: text,
@@ -724,19 +533,17 @@ document.addEventListener('DOMContentLoaded', () => {
         activeChat.messages.push(userMsg);
         saveChatsToStorage();
 
-        // Hide welcome state
-        welcomeContainer.style.display = 'none';
-        messagesList.style.display = 'flex';
+        if (welcomeContainer) welcomeContainer.style.display = 'none';
+        if (messagesList) messagesList.style.display = 'flex';
 
-        // Append User UI (pass array index)
         appendMessageUI('user', text, userMsg.image, false, activeChat.messages.length - 1);
 
-        // Reset Input Bar & Preview
-        userInput.value = '';
-        userInput.style.height = 'auto';
+        if (userInput) {
+            userInput.value = '';
+            userInput.style.height = 'auto';
+        }
         clearAttachment();
 
-        // Run streaming assistant response call
         await getAssistantResponse(activeChat);
     }
 
@@ -756,8 +563,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateStr = clientTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             const timeStr = clientTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-
-            // Always use backend (Vercel /api/chat serverless or local Python server)
             const payload = {
                 messages: activeChat.messages,
                 model: selectedModel,
@@ -765,6 +570,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 system_instruction: systemInstruction,
                 client_time: { date: dateStr, time: timeStr }
             };
+
             const response = await fetch(getApiUrl('/api/chat'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -774,17 +580,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (!response.ok) {
                 const errJson = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
-                const errMsg = errJson.error?.message || errJson.detail || errJson.message || `Server error (${response.status})`;
-                throw new Error(errMsg);
+                throw new Error(errJson.detail || errJson.message || `Server error (${response.status})`);
             }
-
-            // Show 3-dot typing animation while waiting for first chunk
-            bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder('utf-8');
             let buffer = '';
-            let firstChunk = true;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -801,61 +602,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     try {
                         const parsed = JSON.parse(jsonStr);
-
-                        // Handle direct Gemini API SSE format
-                        const geminiText = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
-                        // Handle Render backend format
-                        const backendText = parsed.text;
-                        // Handle errors from both
-                        const errMsg = parsed.error?.message || parsed.error;
-
-                        if (errMsg) throw new Error(errMsg);
-
-                        const chunk = geminiText ?? backendText;
-                        if (chunk !== undefined && chunk !== null) {
-                            if (firstChunk) {
-                                bubble.innerHTML = ''; // Clear typing dots
-                                firstChunk = false;
-                            }
+                        const chunk = parsed.candidates?.[0]?.content?.parts?.[0]?.text || parsed.text;
+                        if (chunk) {
                             fullAiText += chunk;
                             bubble.innerHTML = window.marked ? marked.parse(fullAiText) : escapeHtml(fullAiText);
                             enhanceCodeBlocks(aiRow);
                             scrollToBottom();
                         }
-                    } catch (e) {
-                        if (e.message !== 'Unexpected end of JSON input') {
-                            console.error('SSE parse error:', e);
-                            throw e;
-                        }
-                    }
+                    } catch (e) { }
                 }
             }
 
-            // Remove streaming skeleton state and final render with index
             aiRow.remove();
-
             activeChat.messages.push({ role: 'model', content: fullAiText });
             saveChatsToStorage();
-
-            // Append clean final model UI bubble
             appendMessageUI('model', fullAiText, null, false, activeChat.messages.length - 1);
 
         } catch (err) {
             aiRow.remove();
-
-            if (err.name === 'AbortError') {
-                fullAiText += ' *(Response stopped by user)*';
-            } else {
-                let msg = err.message || 'Unknown error';
-                if (msg === 'Failed to fetch' || msg.includes('NetworkError') || msg.includes('fetch')) {
-                    msg = '⚠️ Could not reach the AI. Check your internet connection or verify your API key in Settings.';
-                }
-                fullAiText += `\n\n${msg}`;
-            }
-
-            activeChat.messages.push({ role: 'model', content: fullAiText });
+            let msg = err.name === 'AbortError' ? '*(Response stopped by user)*' : (err.message || 'Error communicating with AI service');
+            activeChat.messages.push({ role: 'model', content: msg });
             saveChatsToStorage();
-            appendMessageUI('model', fullAiText, null, false, activeChat.messages.length - 1);
+            appendMessageUI('model', msg, null, false, activeChat.messages.length - 1);
         } finally {
             isGenerating = false;
             setGeneratingState(false);
@@ -863,127 +631,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- INLINE USER MESSAGE EDITING (Like Real Gemini) ---
-    function startInlineEdit(row, originalContent, index) {
-        const contentWrapper = row.querySelector('.message-content-wrapper');
-        const originalHtml = contentWrapper.innerHTML;
-
-        contentWrapper.innerHTML = `
-            <div class="message-edit-container">
-                <textarea class="message-edit-textarea">${escapeHtml(originalContent)}</textarea>
-                <div class="message-edit-buttons">
-                    <button class="btn btn-secondary btn-sm cancel-edit-btn">Cancel</button>
-                    <button class="btn btn-primary btn-sm save-edit-btn">Save & Submit</button>
-                </div>
-            </div>
-        `;
-
-        const textarea = contentWrapper.querySelector('.message-edit-textarea');
-        const cancelBtn = contentWrapper.querySelector('.cancel-edit-btn');
-        const saveBtn = contentWrapper.querySelector('.save-edit-btn');
-
-        // Focus and select end of text
-        textarea.focus();
-        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
-
-        cancelBtn.addEventListener('click', () => {
-            const activeChat = chats.find(c => c.id === currentChatId);
-            if (activeChat) {
-                renderMessages(activeChat.messages);
-            }
-        });
-
-        saveBtn.addEventListener('click', async () => {
-            const newText = textarea.value.trim();
-            if (!newText) return;
-
-            const activeChat = chats.find(c => c.id === currentChatId);
-            if (!activeChat) return;
-
-            // Update user message content and truncate thread at this point
-            activeChat.messages[index].content = newText;
-            activeChat.messages = activeChat.messages.slice(0, index + 1);
-            saveChatsToStorage();
-
-            // Refresh message timeline
-            renderMessages(activeChat.messages);
-
-            // Trigger streaming of updated prompt response
-            await getAssistantResponse(activeChat);
-        });
-    }
-
-    // --- COLLAPSIBLE MENU ACTIONS ---
-    if (addBtn) {
-        addBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const isMenuOpen = attachmentMenu.classList.toggle('show');
-            if (isMenuOpen) {
-                addBtnIcon.style.transform = 'rotate(45deg)';
-            } else {
-                addBtnIcon.style.transform = 'none';
-            }
-        });
-    }
-
-    // Close floating attachment menu when clicking anywhere else
-    document.addEventListener('click', () => {
-        if (attachmentMenu && attachmentMenu.classList.contains('show')) {
-            attachmentMenu.classList.remove('show');
-            addBtnIcon.style.transform = 'none';
-        }
-    });
-
-    // --- FILE ATTACHMENTS ---
-    if (attachBtn) {
-        attachBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            fileInput.click();
-            if (attachmentMenu) {
-                attachmentMenu.classList.remove('show');
-                addBtnIcon.style.transform = 'none';
-            }
-        });
-    }
-
-    fileInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (evt) => {
-            const base64Data = evt.target.result.split(',')[1];
-            currentAttachment = {
-                name: file.name,
-                mime_type: file.type || 'image/png',
-                data: base64Data
-            };
-
-            filePreviewName.textContent = file.name;
-            if (file.type && file.type.startsWith('image/')) {
-                filePreviewThumb.src = evt.target.result;
-                filePreviewThumb.style.display = 'block';
-            } else {
-                filePreviewThumb.style.display = 'none';
-            }
-            filePreviewBar.style.display = 'block';
-            updateInputDisplay();
-        };
-        reader.readAsDataURL(file);
-    });
-
-    removeFileBtn.addEventListener('click', clearAttachment);
-
     function clearAttachment() {
         currentAttachment = null;
-        fileInput.value = '';
-        filePreviewBar.style.display = 'none';
+        if (fileInput) fileInput.value = '';
+        if (filePreviewBar) filePreviewBar.style.display = 'none';
         updateInputDisplay();
     }
 
-    // --- INPUT DISPLAY SYNC (MIC VS SEND BUTTON) ---
     function updateInputDisplay() {
-        if (!inputBox) return;
+        if (!inputBox || !userInput) return;
         if (userInput.value.trim() !== '' || currentAttachment !== null) {
             inputBox.classList.add('has-input');
         } else {
@@ -992,591 +648,83 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- EVENT LISTENERS ---
-
-    // Auto Resize Input Textarea & Mobile Keyboard Layout Sync
-    userInput.addEventListener('input', () => {
-        userInput.style.height = 'auto';
-        userInput.style.height = Math.min(userInput.scrollHeight, 180) + 'px';
-        updateInputDisplay();
-    });
-
-    // Reset viewport scroll when mobile keyboard dismisses to prevent sticky floating elements
-    function resetMobileViewportScroll() {
-        setTimeout(() => {
-            window.scrollTo(0, 0);
-            document.body.scrollTop = 0;
-            if (chatViewport) {
-                chatViewport.scrollTop = chatViewport.scrollHeight;
-            }
-        }, 80);
-    }
-
-    userInput.addEventListener('blur', () => {
-        resetMobileViewportScroll();
-    });
-
-    userInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            userInput.blur(); // Dismiss soft keyboard on enter submit
-            sendMessage();
-        }
-    });
-
-    // VisualViewport listener for Mobile Safari & Chrome soft keyboard open/close sync
-    if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', () => {
-            if (window.innerWidth <= 768) {
-                if (chatViewport) scrollToBottom();
-            }
+    if (userInput) {
+        userInput.addEventListener('input', () => {
+            userInput.style.height = 'auto';
+            userInput.style.height = Math.min(userInput.scrollHeight, 180) + 'px';
+            updateInputDisplay();
         });
-        window.visualViewport.addEventListener('scroll', () => {
-            if (window.innerWidth <= 768 && document.activeElement !== userInput) {
-                window.scrollTo(0, 0);
+
+        userInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
             }
         });
     }
 
-    sendBtn.addEventListener('click', () => {
-        if (isGenerating && abortController) {
-            abortController.abort();
-        } else {
-            sendMessage();
-        }
-    });
-
-    // Starter Prompt Cards Click
-    starterCards.forEach(card => {
-        card.addEventListener('click', () => {
-            const prompt = card.getAttribute('data-prompt');
-            sendMessage(prompt);
+    if (sendBtn) {
+        sendBtn.addEventListener('click', () => {
+            if (isGenerating && abortController) {
+                abortController.abort();
+            } else {
+                sendMessage();
+            }
         });
-    });
+    }
 
-    // Mobile Sidebar Drawer & Backdrop Handlers
+    // Mobile Sidebar Drawer
     function closeMobileSidebar() {
         if (sidebar) sidebar.classList.remove('open');
         if (sidebarBackdrop) sidebarBackdrop.classList.remove('show');
     }
 
-    function openMobileSidebar() {
-        if (sidebar) sidebar.classList.add('open');
-        if (sidebarBackdrop) sidebarBackdrop.classList.add('show');
-    }
-
-    openSidebarBtn.addEventListener('click', () => {
-        if (window.innerWidth <= 768) {
-            if (sidebar.classList.contains('open')) {
-                closeMobileSidebar();
+    if (openSidebarBtn) {
+        openSidebarBtn.addEventListener('click', () => {
+            if (window.innerWidth <= 768) {
+                sidebar.classList.toggle('open');
+                if (sidebarBackdrop) sidebarBackdrop.classList.toggle('show');
             } else {
-                openMobileSidebar();
-            }
-        } else {
-            sidebar.classList.toggle('collapsed');
-        }
-    });
-
-    if (closeSidebarBtn) {
-        closeSidebarBtn.addEventListener('click', closeMobileSidebar);
-    }
-
-    if (sidebarBackdrop) {
-        sidebarBackdrop.addEventListener('click', closeMobileSidebar);
-    }
-
-    newChatBtn.addEventListener('click', () => {
-        createNewChat();
-        if (window.innerWidth <= 768) {
-            closeMobileSidebar();
-        }
-    });
-
-    // Search Box
-    chatSearchInput.addEventListener('input', (e) => renderHistory(e.target.value));
-
-    // Clear Chat
-    if (clearChatBtn) {
-        clearChatBtn.addEventListener('click', () => {
-            if (confirm('Clear messages in this conversation?')) {
-                const activeChat = chats.find(c => c.id === currentChatId);
-                if (activeChat) {
-                    activeChat.messages = [];
-                    saveChatsToStorage();
-                    selectChat(currentChatId);
-                }
+                sidebar.classList.toggle('collapsed');
             }
         });
     }
 
-    // Theme Toggle
-    if (themeToggleBtn) {
-        themeToggleBtn.addEventListener('click', () => {
-            const currentTheme = document.documentElement.getAttribute('data-theme');
-            const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
-            document.documentElement.setAttribute('data-theme', nextTheme);
-            localStorage.setItem('mini_gpt_theme', nextTheme);
+    if (closeSidebarBtn) closeSidebarBtn.addEventListener('click', closeMobileSidebar);
+    if (sidebarBackdrop) sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', () => {
+            createNewChat();
+            if (window.innerWidth <= 768) closeMobileSidebar();
         });
     }
 
-    // Model Selector Dropdown
-    modelPickerBtn.addEventListener('click', () => modelDropdown.classList.toggle('show'));
-    document.addEventListener('click', (e) => {
-        if (!modelPickerBtn.contains(e.target) && !modelDropdown.contains(e.target)) {
-            modelDropdown.classList.remove('show');
-        }
-    });
-
-    // Render Model Options
-    const modelsList = [
-        { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: '(Recommended) High capability lightweight model' },
-        { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', desc: 'Fast lightweight model' },
-        { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Efficient multimodal model' }
-    ];
-
-    modelDropdown.innerHTML = modelsList.map(m => `
-        <div class="model-option ${m.id === selectedModel ? 'selected' : ''}" data-id="${m.id}">
-            <div class="model-option-name">${m.name}</div>
-            <div class="model-option-desc">${m.desc}</div>
-        </div>
-    `).join('');
-
-    modelDropdown.querySelectorAll('.model-option').forEach(opt => {
-        opt.addEventListener('click', () => {
-            selectedModel = opt.dataset.id;
-            localStorage.setItem('mini_gpt_model', selectedModel);
-            updateCurrentModelLabel(selectedModel);
-            modelSelect.value = selectedModel;
-            modelDropdown.classList.remove('show');
-        });
-    });
-
-    // --- USER PROFILE HEADER DROPDOWN ---
-    const userProfileBtn = document.getElementById('userProfileBtn');
-    const profileDropdown = document.getElementById('profileDropdown');
-    const authSignOutBtn = document.getElementById('authSignOutBtn');
-
-    if (userProfileBtn && profileDropdown) {
-        userProfileBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            profileDropdown.classList.toggle('show');
-        });
-        document.addEventListener('click', (e) => {
-            if (!userProfileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
-                profileDropdown.classList.remove('show');
-            }
-        });
-    }
-
-    if (authSignOutBtn) {
-        authSignOutBtn.addEventListener('click', async () => {
-            try {
-                await authManager.signOut();
-                if (profileDropdown) profileDropdown.classList.remove('show');
-            } catch (err) {
-                console.error('Sign out error:', err);
-            }
-        });
-    }
-
-    // --- IMAGE PREVIEW LIGHTBOX MODAL ---
-    const closeImagePreviewBtn = document.getElementById('closeImagePreviewBtn');
-    const imagePreviewModal = document.getElementById('imagePreviewModal');
-    if (closeImagePreviewBtn && imagePreviewModal) {
-        closeImagePreviewBtn.addEventListener('click', () => imagePreviewModal.classList.remove('show'));
-        imagePreviewModal.addEventListener('click', (e) => {
-            if (e.target === imagePreviewModal) {
-                imagePreviewModal.classList.remove('show');
-            }
-        });
-    }
-
-    // Settings Modal
-    openSettingsBtn.addEventListener('click', () => settingsModal.classList.add('show'));
-    closeSettingsModalBtn.addEventListener('click', () => settingsModal.classList.remove('show'));
-    cancelSettingsBtn.addEventListener('click', () => settingsModal.classList.remove('show'));
-
-    temperatureSlider.addEventListener('input', (e) => tempVal.textContent = e.target.value);
-
-    saveSettingsBtn.addEventListener('click', () => {
-        selectedModel = modelSelect.value;
-        temperature = parseFloat(temperatureSlider.value);
-
-        localStorage.setItem('mini_gpt_model', selectedModel);
-        localStorage.setItem('mini_gpt_temp', temperature);
-
-        updateCurrentModelLabel(selectedModel);
-        checkBackendStatus();
-        settingsModal.classList.remove('show');
-    });
-
-    // Persona Modal
-    personaBtn.addEventListener('click', () => personaModal.classList.add('show'));
-    closePersonaModalBtn.addEventListener('click', () => personaModal.classList.remove('show'));
-
-    chipBtns.forEach(chip => {
-        chip.addEventListener('click', () => {
-            chipBtns.forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            systemInstructionInput.value = chip.dataset.sys;
-        });
-    });
-
-    clearPersonaBtn.addEventListener('click', () => {
-        systemInstructionInput.value = '';
-        chipBtns.forEach(c => c.classList.remove('active'));
-    });
-
-    savePersonaBtn.addEventListener('click', () => {
-        systemInstruction = systemInstructionInput.value.trim();
-        localStorage.setItem('mini_gpt_persona', systemInstruction);
-        personaModal.classList.remove('show');
-    });
-
-    // Utility HTML Escaper
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
     }
 
-    // --- CAMERA SNAP OPTION ---
-    let cameraStream = null;
-    let cameraFacingMode = 'environment'; // Default to main/rear camera on mobile phones
-    const switchCameraBtn = document.getElementById('switchCameraBtn');
-    const nativeCameraBtn = document.getElementById('nativeCameraBtn');
-    const nativeCameraInput = document.getElementById('nativeCameraInput');
-
-    async function startCamera(facingMode = 'environment') {
-        stopCameraTracksOnly();
-        cameraFacingMode = facingMode;
-        try {
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { ideal: facingMode } },
-                audio: false
-            });
-            cameraVideo.srcObject = cameraStream;
-            cameraModal.classList.add('show');
-        } catch (err) {
-            console.error("Camera access failed:", err);
-            try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                cameraVideo.srcObject = cameraStream;
-                cameraModal.classList.add('show');
-            } catch (err2) {
-                alert("Could not access camera. Please check browser permissions.");
-            }
-        }
-    }
-
-    function stopCameraTracksOnly() {
-        if (cameraStream) {
-            cameraStream.getTracks().forEach(track => track.stop());
-            cameraStream = null;
-        }
-        cameraVideo.srcObject = null;
-    }
-
-    function stopCamera() {
-        stopCameraTracksOnly();
-        cameraModal.classList.remove('show');
-    }
-
-    if (switchCameraBtn) {
-        switchCameraBtn.addEventListener('click', () => {
-            const nextMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
-            startCamera(nextMode);
-        });
-    }
-
-    if (nativeCameraBtn && nativeCameraInput) {
-        nativeCameraBtn.addEventListener('click', () => {
-            stopCamera();
-            nativeCameraInput.click();
-        });
-
-        nativeCameraInput.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-
-            const reader = new FileReader();
-            reader.onload = (evt) => {
-                const base64Data = evt.target.result.split(',')[1];
-                currentAttachment = {
-                    name: file.name || `photo_${Date.now()}.jpg`,
-                    mime_type: file.type || 'image/jpeg',
-                    data: base64Data
-                };
-
-                filePreviewName.textContent = currentAttachment.name;
-                filePreviewThumb.src = evt.target.result;
-                filePreviewThumb.style.display = 'block';
-                filePreviewBar.style.display = 'block';
-                updateInputDisplay();
-            };
-            reader.readAsDataURL(file);
-        });
-    }
-
-    if (cameraBtn) {
-        cameraBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (attachmentMenu) {
-                attachmentMenu.classList.remove('show');
-                addBtnIcon.style.transform = 'none';
-            }
-            // Directly trigger mobile device camera app
-            if (nativeCameraInput) {
-                nativeCameraInput.click();
-            } else {
-                startCamera('environment');
-            }
-        });
-    }
-    if (closeCameraModalBtn) closeCameraModalBtn.addEventListener('click', stopCamera);
-    if (cancelCameraBtn) cancelCameraBtn.addEventListener('click', stopCamera);
-
-    if (capturePhotoBtn) {
-        capturePhotoBtn.addEventListener('click', () => {
-            if (!cameraStream) return;
-
-            cameraCanvas.width = cameraVideo.videoWidth || 640;
-            cameraCanvas.height = cameraVideo.videoHeight || 480;
-
-            const ctx = cameraCanvas.getContext('2d');
-
-            // Mirror canvas drawing only for front ('user') camera
-            if (cameraFacingMode === 'user') {
-                ctx.translate(cameraCanvas.width, 0);
-                ctx.scale(-1, 1);
-            }
-            ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
-
-            const base64Data = cameraCanvas.toDataURL('image/jpeg').split(',')[1];
-
-            currentAttachment = {
-                name: `snapshot_${Date.now()}.jpg`,
-                mime_type: 'image/jpeg',
-                data: base64Data
-            };
-
-            filePreviewName.textContent = currentAttachment.name;
-            filePreviewThumb.src = `data:image/jpeg;base64,${base64Data}`;
-            filePreviewThumb.style.display = 'block';
-            filePreviewBar.style.display = 'block';
-
-            updateInputDisplay();
-            stopCamera();
-        });
-    }
-
-    // --- MICROPHONE VOICE TYPING ---
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = null;
-    let isListening = false;
-    let baseText = '';
-
-    if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = 'en-US';
-
-        recognition.onresult = (event) => {
-            if (!isListening) return;
-
-            let finalSegments = [];
-            let interimSegments = [];
-
-            // Rebuild speech segments dynamically to insert spaces and strip default periods (.)
-            for (let i = 0; i < event.results.length; ++i) {
-                const alt = event.results[i] && event.results[i][0];
-                const rawText = (alt && alt.transcript) ? alt.transcript : '';
-                const cleanedText = rawText.trim().replace(/\.$/, "").trim(); // Strip trailing period safely
-
-                if (event.results[i].isFinal) {
-                    if (cleanedText) finalSegments.push(cleanedText);
-                } else {
-                    if (cleanedText) interimSegments.push(cleanedText);
-                }
-            }
-
-            const finalTranscript = finalSegments.join(' ');
-            const interimTranscript = interimSegments.join(' ');
-
-            // Build text output dynamically with proper sentence spacing
-            let output = baseText;
-            if (finalTranscript) {
-                output += (output ? ' ' : '') + finalTranscript;
-            }
-            if (interimTranscript) {
-                output += (output ? ' ' : '') + interimTranscript;
-            }
-
-            userInput.value = output;
-
-            // Auto resize input textarea
-            userInput.dispatchEvent(new Event('input'));
-        };
-
-        recognition.onerror = (event) => {
-            console.error('Speech recognition error:', event.error);
-            stopListening();
-        };
-
-        recognition.onend = () => {
-            stopListening();
-        };
-    }
-
-    function startListening() {
-        if (!recognition) return;
-        try {
-            baseText = userInput.value; // Store text currently in the box
-            recognition.start();
-            isListening = true;
-            micBtn.classList.add('recording');
-            micBtn.title = "Stop Listening";
-        } catch (err) {
-            console.error("Failed to start speech recognition:", err);
-        }
-    }
-
-    function stopListening() {
-        if (!recognition) return;
-        try {
-            recognition.stop();
-        } catch (err) { }
-        isListening = false;
-        micBtn.classList.remove('recording');
-        micBtn.title = "Voice Typing";
-    }
-
-    function abortListening() {
-        if (!recognition) return;
-        try {
-            recognition.abort(); // Immediately cut off the recording session
-        } catch (err) { }
-        isListening = false;
-        micBtn.classList.remove('recording');
-        micBtn.title = "Voice Typing";
-    }
-
-    if (micBtn) {
-        micBtn.addEventListener('click', () => {
-            if (!recognition) {
-                alert("Speech recognition is not supported in this browser. Please try Chrome, Edge, or Safari.");
-                return;
-            }
-            if (isListening) {
-                abortListening(); // Stop instantly
-            } else {
-                startListening();
-            }
-        });
-    }
-
-    // ==========================================================================
-    // FIREBASE AUTHENTICATION LOGIC & HANDLERS
-    // ==========================================================================
+    // AUTH HANDLERS
     function handleAuthStateChanged(user) {
         const authOverlay = document.getElementById('authOverlay');
-        const userNameEl = document.getElementById('userName');
-        const userEmailEl = document.getElementById('userEmail');
-        const userAvatarImg = document.getElementById('userAvatarImg');
-        const userAvatarInitial = document.getElementById('userAvatarInitial');
         const logoutBtn = document.getElementById('logoutBtn');
-        const authError = document.getElementById('authError');
-
-        if (authError) {
-            authError.style.display = 'none';
-            authError.textContent = '';
-        }
+        const guestSignInBtn = document.getElementById('guestSignInBtn');
+        const googleSignInBtn = document.getElementById('googleSignInBtn');
 
         if (user) {
             currentUser = user;
             if (authOverlay) authOverlay.style.display = 'none';
             if (logoutBtn) logoutBtn.style.display = 'flex';
-
-            // Set user profile info
-            const displayName = user.displayName || (user.isAnonymous ? 'Guest User' : user.email.split('@')[0]);
-            const displayEmail = user.email || (user.isAnonymous ? 'Anonymous Session' : 'No Email');
-            
-            if (userNameEl) userNameEl.textContent = displayName;
-
-            // Update dropdown values
-            const dropdownUserName = document.getElementById('dropdownUserName');
-            const dropdownUserEmail = document.getElementById('dropdownUserEmail');
-            if (dropdownUserName) dropdownUserName.textContent = displayName;
-            if (dropdownUserEmail) dropdownUserEmail.textContent = displayEmail;
-
-            if (user.email && !user.isAnonymous) {
-                if (userEmailEl) {
-                    userEmailEl.textContent = user.email;
-                    userEmailEl.style.display = 'block';
-                }
-            } else {
-                if (userEmailEl) userEmailEl.style.display = 'none';
-            }
-
-            // Set header profile button image/initial
-            const userProfileImgHeader = document.getElementById('userProfileImgHeader');
-            const userProfileInitialHeader = document.getElementById('userProfileInitialHeader');
-            const dropdownUserImg = document.getElementById('dropdownUserImg');
-
-            if (user.photoURL) {
-                if (userAvatarImg) {
-                    userAvatarImg.src = user.photoURL;
-                    userAvatarImg.style.display = 'block';
-                }
-                if (userAvatarInitial) userAvatarInitial.style.display = 'none';
-
-                if (userProfileImgHeader) {
-                    userProfileImgHeader.src = user.photoURL;
-                    userProfileImgHeader.style.display = 'block';
-                }
-                if (userProfileInitialHeader) userProfileInitialHeader.style.display = 'none';
-
-                if (dropdownUserImg) {
-                    dropdownUserImg.src = user.photoURL;
-                }
-            } else {
-                if (userAvatarImg) userAvatarImg.style.display = 'none';
-                if (userAvatarInitial) {
-                    userAvatarInitial.style.display = 'block';
-                    userAvatarInitial.textContent = user.isAnonymous ? 'G' : displayName.charAt(0).toUpperCase();
-                }
-
-                if (userProfileImgHeader) {
-                    userProfileImgHeader.src = "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png";
-                    userProfileImgHeader.style.display = 'block';
-                }
-                if (userProfileInitialHeader) userProfileInitialHeader.style.display = 'none';
-
-                if (dropdownUserImg) {
-                    dropdownUserImg.src = "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png";
-                }
-            }
-
-            // Load user-specific chat history
             loadUserChats(user);
         } else {
             currentUser = null;
             if (authOverlay) authOverlay.style.display = 'flex';
             if (logoutBtn) logoutBtn.style.display = 'none';
-
-            if (userNameEl) userNameEl.textContent = 'Sign In';
-            if (userEmailEl) userEmailEl.style.display = 'none';
-            if (userAvatarImg) userAvatarImg.style.display = 'none';
-            if (userAvatarInitial) {
-                userAvatarInitial.style.display = 'block';
-                userAvatarInitial.textContent = 'AI';
-            }
-
-            // Clear active chat viewport & history
             chats = [];
             currentChatId = null;
             if (messagesList) messagesList.innerHTML = '';
             if (welcomeContainer) welcomeContainer.style.display = 'block';
-            if (messagesList) messagesList.style.display = 'none';
             renderHistory();
         }
     }
@@ -1586,23 +734,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const keys = getUserStorageKeys(user);
         const mergedMap = new Map();
 
-        // 1. Load local cache instantly
         keys.forEach(key => {
             try {
                 const stored = JSON.parse(localStorage.getItem(key) || '[]');
                 stored.forEach(chat => {
-                    if (chat && chat.id) {
-                        const existing = mergedMap.get(chat.id);
-                        const chatMsgs = chat.messages ? chat.messages.length : 0;
-                        const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
-                        if (!existing || chatMsgs >= existingMsgs) {
-                            mergedMap.set(chat.id, chat);
-                        }
-                    }
+                    if (chat && chat.id) mergedMap.set(chat.id, chat);
                 });
-            } catch (e) {
-                console.error("Failed to parse stored chat for key:", key, e);
-            }
+            } catch (e) { }
         });
 
         chats = Array.from(mergedMap.values());
@@ -1614,226 +752,12 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             createNewChat();
         }
-
-        // Merge incoming chats helper
-        function mergeIncomingChats(incomingChats) {
-            if (!Array.isArray(incomingChats)) return;
-            let updated = false;
-            incomingChats.forEach(chat => {
-                if (chat && chat.id) {
-                    const existing = mergedMap.get(chat.id);
-                    const chatMsgs = chat.messages ? chat.messages.length : 0;
-                    const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
-                    if (!existing || chatMsgs >= existingMsgs) {
-                        mergedMap.set(chat.id, chat);
-                        updated = true;
-                    }
-                }
-            });
-
-            if (updated) {
-                chats = Array.from(mergedMap.values());
-                chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-                const jsonStr = JSON.stringify(chats);
-                keys.forEach(key => localStorage.setItem(key, jsonStr));
-
-                renderHistory();
-                if (currentChatId && chats.some(c => c.id === currentChatId)) {
-                    selectChat(currentChatId);
-                } else if (chats.length > 0) {
-                    selectChat(chats[0].id);
-                }
-            }
-        }
-
-        // 2. Load and merge from Firestore cloud sync
-        if (db && !isFirebasePlaceholder) {
-            try {
-                const userDocRef = doc(db, "users", user.uid);
-                const docSnap = await getDoc(userDocRef);
-                if (docSnap.exists()) {
-                    const cloudData = docSnap.data();
-                    if (cloudData && Array.isArray(cloudData.chats)) {
-                        mergeIncomingChats(cloudData.chats);
-                    }
-                }
-            } catch (err) {
-                console.error("Error loading chats from Firestore:", err);
-            }
-        }
-
-        // 3. Load and merge from custom Backend SQLite
-        if (user.email) {
-            try {
-                const encEmail = encodeURIComponent(user.email.toLowerCase().trim());
-                const response = await fetch(getApiUrl(`/api/sync/load?email=${encEmail}`));
-                if (response.ok) {
-                    const cloudChats = await response.json();
-                    mergeIncomingChats(cloudChats);
-                }
-            } catch (err) {
-                console.error("Error loading chats from custom backend:", err);
-            }
-        }
     }
 
-    // Auth Form & View Switching Listeners
-    const authViewSignIn = document.getElementById('authViewSignIn');
-    const authViewSignUp = document.getElementById('authViewSignUp');
-    const goToSignUp = document.getElementById('goToSignUp');
-    const goToSignIn = document.getElementById('goToSignIn');
+    // Attach Authentication Click Listeners
+    document.getElementById('authGoogleBtnSignIn')?.addEventListener('click', () => authManager.signInWithGoogle());
+    document.getElementById('guestSignInBtn')?.addEventListener('click', () => authManager.signInAnonymously());
+    document.getElementById('logoutBtn')?.addEventListener('click', () => authManager.signOut());
 
-    const authEmailSignIn = document.getElementById('authEmailSignIn');
-    const authPasswordSignIn = document.getElementById('authPasswordSignIn');
-    const authEmailSignUp = document.getElementById('authEmailSignUp');
-    const authPasswordSignUp = document.getElementById('authPasswordSignUp');
-
-    const toggleSignInPwd = document.getElementById('toggleSignInPwd');
-    const toggleSignUpPwd = document.getElementById('toggleSignUpPwd');
-
-    const authSignInBtn = document.getElementById('authSignInBtn');
-    const authSignUpBtn = document.getElementById('authSignUpBtn');
-
-    const authGoogleBtnSignIn = document.getElementById('authGoogleBtnSignIn');
-    const authGoogleBtnSignUp = document.getElementById('authGoogleBtnSignUp');
-
-    const authError = document.getElementById('authError');
-
-    function showAuthError(msg) {
-        if (!authError) return;
-        authError.textContent = msg;
-        authError.style.display = 'block';
-    }
-
-    function clearAuthError() {
-        if (authError) {
-            authError.textContent = '';
-            authError.style.display = 'none';
-        }
-    }
-
-    // View Switchers
-    if (goToSignUp) {
-        goToSignUp.addEventListener('click', (e) => {
-            e.preventDefault();
-            clearAuthError();
-            if (authViewSignIn) authViewSignIn.style.display = 'none';
-            if (authViewSignUp) authViewSignUp.style.display = 'block';
-        });
-    }
-
-    if (goToSignIn) {
-        goToSignIn.addEventListener('click', (e) => {
-            e.preventDefault();
-            clearAuthError();
-            if (authViewSignUp) authViewSignUp.style.display = 'none';
-            if (authViewSignIn) authViewSignIn.style.display = 'block';
-        });
-    }
-
-    // Password Eye Toggles
-    function setupPasswordToggle(btn, inputEl) {
-        if (!btn || !inputEl) return;
-        btn.addEventListener('click', () => {
-            const isPwd = inputEl.type === 'password';
-            inputEl.type = isPwd ? 'text' : 'password';
-            btn.style.color = isPwd ? 'var(--accent-primary)' : 'var(--text-muted)';
-        });
-    }
-    setupPasswordToggle(toggleSignInPwd, authPasswordSignIn);
-    setupPasswordToggle(toggleSignUpPwd, authPasswordSignUp);
-
-    // Sign In Handler
-    if (authSignInBtn) {
-        authSignInBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const email = authEmailSignIn ? authEmailSignIn.value.trim() : '';
-            const password = authPasswordSignIn ? authPasswordSignIn.value : '';
-
-            if (!email || !password) {
-                showAuthError('Please enter both your email address and password.');
-                return;
-            }
-            clearAuthError();
-            authSignInBtn.disabled = true;
-            authSignInBtn.textContent = 'Signing In...';
-
-            try {
-                await authManager.signInWithEmail(email, password);
-            } catch (err) {
-                console.error('Sign In error:', err);
-                showAuthError(err.message || 'Sign in failed. Please check your credentials.');
-            } finally {
-                authSignInBtn.disabled = false;
-                authSignInBtn.textContent = 'Sign In';
-            }
-        });
-    }
-
-    // Sign Up Handler
-    if (authSignUpBtn) {
-        authSignUpBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            const email = authEmailSignUp ? authEmailSignUp.value.trim() : '';
-            const password = authPasswordSignUp ? authPasswordSignUp.value : '';
-
-            if (!email || !password) {
-                showAuthError('Please enter an email address and password.');
-                return;
-            }
-            if (password.length < 6) {
-                showAuthError('Password must be at least 6 characters long.');
-                return;
-            }
-            clearAuthError();
-            authSignUpBtn.disabled = true;
-            authSignUpBtn.textContent = 'Registering...';
-
-            try {
-                await authManager.signUpWithEmail(email, password);
-            } catch (err) {
-                console.error('Sign Up error:', err);
-                showAuthError(err.message || 'Registration failed. Please try again.');
-            } finally {
-                authSignUpBtn.disabled = false;
-                authSignUpBtn.textContent = 'Sign Up';
-            }
-        });
-    }
-
-    // Google Sign In Handlers
-    async function handleGoogleSignIn(btn) {
-        if (!btn) return;
-        btn.disabled = true;
-        clearAuthError();
-        try {
-            await authManager.signInWithGoogle();
-        } catch (err) {
-            console.error('Google Auth error:', err);
-            showAuthError(err.message || 'Failed to sign in with Google.');
-        } finally {
-            btn.disabled = false;
-        }
-    }
-
-    if (authGoogleBtnSignIn) {
-        authGoogleBtnSignIn.addEventListener('click', () => handleGoogleSignIn(authGoogleBtnSignIn));
-    }
-    if (authGoogleBtnSignUp) {
-        authGoogleBtnSignUp.addEventListener('click', () => handleGoogleSignIn(authGoogleBtnSignUp));
-    }
-
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async () => {
-            try {
-                await authManager.signOut();
-            } catch (err) {
-                console.error('Sign out error:', err);
-            }
-        });
-    }
-
-    // Start App
     init();
 });
