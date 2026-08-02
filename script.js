@@ -1237,65 +1237,69 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Auth Form & Social Buttons Listeners
-    const authTabSignIn = document.getElementById('authTabSignIn');
-    const authTabSignUp = document.getElementById('authTabSignUp');
-    const authForm = document.getElementById('authForm');
-    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const authSignInBtn = document.getElementById('authSignInBtn');
+    const authSignUpBtn = document.getElementById('authSignUpBtn');
     const authEmail = document.getElementById('authEmail');
     const authPassword = document.getElementById('authPassword');
     const authGoogleBtn = document.getElementById('authGoogleBtn');
     const authGuestBtn = document.getElementById('authGuestBtn');
     const authError = document.getElementById('authError');
 
-    let isSignUpMode = false;
+    function getAuthInputs() {
+        const email = authEmail ? authEmail.value.trim() : '';
+        const password = authPassword ? authPassword.value : '';
+        return { email, password };
+    }
 
-    if (authTabSignIn && authTabSignUp) {
-        authTabSignIn.addEventListener('click', () => {
-            isSignUpMode = false;
-            authTabSignIn.classList.add('active');
-            authTabSignUp.classList.remove('active');
-            if (authSubmitBtn) authSubmitBtn.textContent = 'Sign In';
-        });
+    function setAuthBusy(btn, label, busy) {
+        if (!btn) return;
+        btn.disabled = busy;
+        btn.querySelector('svg').style.opacity = busy ? '0.4' : '1';
+        const textNode = btn.lastChild;
+        if (textNode && textNode.nodeType === 3) textNode.textContent = ' ' + (busy ? label : btn.id === 'authSignInBtn' ? 'Sign In' : 'Sign Up');
+    }
 
-        authTabSignUp.addEventListener('click', () => {
-            isSignUpMode = true;
-            authTabSignUp.classList.add('active');
-            authTabSignIn.classList.remove('active');
-            if (authSubmitBtn) authSubmitBtn.textContent = 'Sign Up';
+    function showAuthError(msg) {
+        if (!authError) return;
+        authError.textContent = msg;
+        authError.style.display = 'block';
+    }
+
+    function clearAuthError() {
+        if (authError) authError.style.display = 'none';
+    }
+
+    if (authSignInBtn) {
+        authSignInBtn.addEventListener('click', async () => {
+            const { email, password } = getAuthInputs();
+            if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
+            clearAuthError();
+            setAuthBusy(authSignInBtn, 'Signing In...', true);
+            try {
+                await authManager.signInWithEmail(email, password);
+            } catch (err) {
+                console.error('Sign In error:', err);
+                showAuthError(err.message || 'Sign in failed. Please try again.');
+            } finally {
+                setAuthBusy(authSignInBtn, '', false);
+            }
         });
     }
 
-    if (authForm) {
-        authForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const email = authEmail.value.trim();
-            const password = authPassword.value;
-
-            if (!email || !password) return;
-
-            if (authSubmitBtn) {
-                authSubmitBtn.disabled = true;
-                authSubmitBtn.textContent = isSignUpMode ? 'Registering...' : 'Signing In...';
-            }
-            if (authError) authError.style.display = 'none';
-
+    if (authSignUpBtn) {
+        authSignUpBtn.addEventListener('click', async () => {
+            const { email, password } = getAuthInputs();
+            if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
+            if (password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+            clearAuthError();
+            setAuthBusy(authSignUpBtn, 'Registering...', true);
             try {
-                if (isSignUpMode) {
-                    await authManager.signUpWithEmail(email, password);
-                } else {
-                    await authManager.signInWithEmail(email, password);
-                }
+                await authManager.signUpWithEmail(email, password);
             } catch (err) {
-                console.error("Auth error:", err);
-                if (authError) {
-                    authError.textContent = err.message || "An authentication error occurred.";
-                    authError.style.display = 'block';
-                }
+                console.error('Sign Up error:', err);
+                showAuthError(err.message || 'Registration failed. Please try again.');
             } finally {
-                if (authSubmitBtn) {
-                    authSubmitBtn.disabled = false;
-                    authSubmitBtn.textContent = isSignUpMode ? 'Sign Up' : 'Sign In';
-                }
+                setAuthBusy(authSignUpBtn, '', false);
             }
         });
     }
@@ -1303,15 +1307,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authGoogleBtn) {
         authGoogleBtn.addEventListener('click', async () => {
             authGoogleBtn.disabled = true;
-            if (authError) authError.style.display = 'none';
+            clearAuthError();
             try {
                 await authManager.signInWithGoogle();
             } catch (err) {
-                console.error("Google Auth error:", err);
-                if (authError) {
-                    authError.textContent = err.message || "Failed to sign in with Google.";
-                    authError.style.display = 'block';
-                }
+                console.error('Google Auth error:', err);
+                showAuthError(err.message || 'Failed to sign in with Google.');
             } finally {
                 authGoogleBtn.disabled = false;
             }
@@ -1321,15 +1322,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (authGuestBtn) {
         authGuestBtn.addEventListener('click', async () => {
             authGuestBtn.disabled = true;
-            if (authError) authError.style.display = 'none';
+            clearAuthError();
             try {
                 await authManager.signInAnonymously();
             } catch (err) {
-                console.error("Guest Auth error:", err);
-                if (authError) {
-                    authError.textContent = err.message || "Failed to continue as Guest.";
-                    authError.style.display = 'block';
-                }
+                console.error('Guest Auth error:', err);
+                showAuthError(err.message || 'Failed to continue as Guest.');
             } finally {
                 authGuestBtn.disabled = false;
             }
@@ -1341,7 +1339,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 await authManager.signOut();
             } catch (err) {
-                console.error("Sign out error:", err);
+                console.error('Sign out error:', err);
             }
         });
     }
