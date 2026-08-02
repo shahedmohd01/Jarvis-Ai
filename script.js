@@ -148,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // DOM Elements
     const sidebar = document.getElementById('sidebar');
+    const sidebarBackdrop = document.getElementById('sidebarBackdrop');
     const openSidebarBtn = document.getElementById('openSidebarBtn');
     const closeSidebarBtn = document.getElementById('closeSidebarBtn');
     const newChatBtn = document.getElementById('newChatBtn');
@@ -378,7 +379,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else {
                     selectChat(chat.id);
                     if (window.innerWidth <= 768) {
-                        sidebar.classList.remove('open');
+                        closeMobileSidebar();
                     }
                 }
             });
@@ -939,16 +940,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    // Sidebar Toggles
+    // Mobile Sidebar Drawer & Backdrop Handlers
+    function closeMobileSidebar() {
+        if (sidebar) sidebar.classList.remove('open');
+        if (sidebarBackdrop) sidebarBackdrop.classList.remove('show');
+    }
+
+    function openMobileSidebar() {
+        if (sidebar) sidebar.classList.add('open');
+        if (sidebarBackdrop) sidebarBackdrop.classList.add('show');
+    }
+
     openSidebarBtn.addEventListener('click', () => {
         if (window.innerWidth <= 768) {
-            sidebar.classList.toggle('open');
+            if (sidebar.classList.contains('open')) {
+                closeMobileSidebar();
+            } else {
+                openMobileSidebar();
+            }
         } else {
             sidebar.classList.toggle('collapsed');
         }
     });
-    closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
-    newChatBtn.addEventListener('click', createNewChat);
+
+    if (closeSidebarBtn) {
+        closeSidebarBtn.addEventListener('click', closeMobileSidebar);
+    }
+
+    if (sidebarBackdrop) {
+        sidebarBackdrop.addEventListener('click', closeMobileSidebar);
+    }
+
+    newChatBtn.addEventListener('click', () => {
+        createNewChat();
+        if (window.innerWidth <= 768) {
+            closeMobileSidebar();
+        }
+    });
 
     // Search Box
     chatSearchInput.addEventListener('input', (e) => renderHistory(e.target.value));
