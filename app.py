@@ -173,6 +173,12 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
             system_instruction = identity_prefix + system_instruction.strip()
             
         model = body.get("model", "gemini-3.5-flash-lite")
+        # Fallback translations for models that are unstable or hang on Google's API servers
+        if model == "gemini-3.5-flash-lite":
+            model = "gemini-3.1-flash-lite"
+        elif model == "gemini-2.5-flash-lite":
+            model = "gemini-2.0-flash-lite"
+            
         api_key = get_api_key(x_gemini_api_key, provided_key)
     except Exception as e:
         print("--- REQUEST PARSING ERROR ---")

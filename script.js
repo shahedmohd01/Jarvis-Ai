@@ -654,6 +654,8 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
             if (inputBox) inputBox.classList.add('has-input');
             if (userInput) userInput.disabled = true;
+            if (statusBadge) statusBadge.classList.add('generating');
+            if (statusLabel) statusLabel.textContent = 'Gemini is typing...';
         } else {
             sendBtn.classList.remove('generating-stop-btn');
             sendBtn.title = 'Send Message';
@@ -666,6 +668,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 userInput.disabled = false;
                 userInput.focus();
             }
+            if (statusBadge) statusBadge.classList.remove('generating');
+            if (statusLabel) statusLabel.textContent = 'Ready';
             updateInputDisplay();
         }
     }
@@ -867,20 +871,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Trigger streaming of updated prompt response
             await getAssistantResponse(activeChat);
         });
-    }
-
-    function setGeneratingState(generating) {
-        if (generating) {
-            statusBadge.classList.add('generating');
-            statusLabel.textContent = 'Gemini is typing...';
-            sendBtn.innerHTML = `<svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>`;
-            sendBtn.title = 'Stop Generation';
-        } else {
-            statusBadge.classList.remove('generating');
-            statusLabel.textContent = 'Ready';
-            sendBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>`;
-            sendBtn.title = 'Send Message';
-        }
     }
 
     // --- COLLAPSIBLE MENU ACTIONS ---
