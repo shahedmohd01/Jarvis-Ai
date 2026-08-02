@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // State Variables
     let chats = JSON.parse(localStorage.getItem('mini_gpt_chats') || '[]');
     let currentChatId = null;
-    let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.6-flash';
+    let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash';
     let apiKey = localStorage.getItem('mini_gpt_api_key') || '';
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.7');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
@@ -140,16 +140,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function updateCurrentModelLabel(modelId) {
         const names = {
-            'gemini-3.6-flash': 'Gemini 3.6 Flash',
             'gemini-3.5-flash': 'Gemini 3.5 Flash',
+            'gemini-3.5-pro': 'Gemini 3.5 Pro',
+            'gemini-2.5-flash': 'Gemini 2.5 Flash',
+            'gemini-2.5-pro': 'Gemini 2.5 Pro',
+            'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite',
             'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
-            'gemini-flash-latest': 'Gemini 3.6 Flash',
-            'gemini-pro-latest': 'Gemini 3.6 Flash',
-            'gemini-2.0-flash': 'Gemini 3.6 Flash',
-            'gemini-2.5-flash': 'Gemini 3.6 Flash',
-            'gemini-2.5-pro': 'Gemini 3.6 Flash',
-            'gemini-1.5-flash': 'Gemini 3.6 Flash',
-            'gemini-1.5-pro': 'Gemini 3.6 Flash'
+            'gemini-2.5-flash-lite': 'Gemini 2.5 Flash Lite'
         };
         currentModelName.textContent = names[modelId] || modelId;
     }
@@ -398,8 +395,8 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (!response.ok) {
-                const errJson = await response.json().catch(() => ({ detail: response.statusText }));
-                throw new Error(errJson.detail || 'Failed to stream response');
+                const errJson = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
+                throw new Error(errJson.detail || errJson.message || `Server error (${response.status})`);
             }
 
             const reader = response.body.getReader();
@@ -582,9 +579,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Model Options
     const modelsList = [
-        { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', desc: 'Fastest & highly intelligent' },
-        { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', desc: 'High capability model' },
-        { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', desc: 'Lightweight & instant' }
+        { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', desc: 'Fastest & highly intelligent' },
+        { id: 'gemini-3.5-pro', name: 'Gemini 3.5 Pro', desc: 'Ultra capability and coding' },
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast and versatile standard' },
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Highly capable reasoning model' },
+        { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: 'High capability lightweight' },
+        { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', desc: 'Fast lightweight model' },
+        { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Efficient multimodal model' }
     ];
 
     modelDropdown.innerHTML = modelsList.map(m => `
