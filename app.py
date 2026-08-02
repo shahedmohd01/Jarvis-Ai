@@ -3,6 +3,8 @@ import json
 import asyncio
 import base64
 import traceback
+import time
+from collections import defaultdict
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException, Header
 from fastapi.responses import StreamingResponse, JSONResponse, FileResponse
@@ -15,13 +17,40 @@ load_dotenv()
 
 app = FastAPI(title="Jarvis AI - Gemini Powered", version="1.0.1")
 
+ALLOWED_ORIGINS = [
+    "https://shahedmohd01.github.io",  # Production — GitHub Pages
+    "http://localhost:8000",            # Local dev
+    "http://127.0.0.1:8000",           # Local dev
+    "http://localhost:5500",            # VS Code Live Server
+    "http://127.0.0.1:5500",           # VS Code Live Server
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=".*",
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["POST", "GET"],
+    allow_headers=["Content-Type", "x-gemini-api-key"],
 )
+
+# ==========================================================================
+# RATE LIMITER — 20 requests per minute per IP
+# ==========================================================================
+_rate_store: Dict[str, list] = defaultdict(list)
+RATE_LIMIT = 20       # max requests
+RATE_WINDOW = 60      # per seconds
+
+def check_rate_limit(ip: str):
+    now = time.time()
+    timestamps = _rate_store[ip]
+    # Drop timestamps outside the window
+    _rate_store[ip] = [t for t in timestamps if now - t < RATE_WINDOW]
+    if len(_rate_store[ip]) >= RATE_LIMIT:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Rate limit exceeded. Max {RATE_LIMIT} requests per minute."
+        )
+    _rate_store[ip].append(now)
 
 def get_api_key(headers_api_key: Any = None, body_api_key: Any = None) -> str:
     key = (
@@ -101,6 +130,10 @@ async def health_check(x_gemini_api_key: Optional[str] = Header(None)):
 @app.api_route("/api/chat", methods=["POST", "GET"])
 @app.api_route("/api/chat/", methods=["POST", "GET"])
 async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = Header(None)):
+    # Rate limit by client IP
+    client_ip = raw_request.client.host if raw_request.client else "unknown"
+    check_rate_limit(client_ip)
+
     if raw_request.method == "GET":
         return JSONResponse({"status": "active", "message": "Endpoint active."})
 
