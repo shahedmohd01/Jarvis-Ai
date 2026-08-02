@@ -501,7 +501,16 @@ button {
     width: 8px;
     height: 8px;
     border-radius: 50%;
+    background: #ef4444;
+    transition: background 0.4s ease;
+}
+
+.status-badge.online .status-dot {
     background: #10b981;
+}
+
+.status-badge.offline .status-dot {
+    background: #ef4444;
 }
 
 .status-badge.generating .status-dot {

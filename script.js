@@ -250,8 +250,9 @@ document.addEventListener('DOMContentLoaded', () => {
         systemInstructionInput.value = systemInstruction;
         updateCurrentModelLabel(selectedModel);
 
-        // Check Backend Health & API Key Status
+        // Check Backend Health & API Key Status — runs once on load, then every 30s
         checkBackendStatus();
+        setInterval(checkBackendStatus, 30000);
 
         // Initialize Firebase Authentication State Observer
         authManager.onAuthStateChanged((user) => {
@@ -283,29 +284,45 @@ document.addEventListener('DOMContentLoaded', () => {
         const settingsBadge = document.getElementById('backendStatusLabel');
         const settingsBadgeWrap = document.getElementById('backendStatusBadge');
         try {
-            const res = await fetch(getApiUrl('/api/health'));
+            const res = await fetch(getApiUrl('/api/health'), { signal: AbortSignal.timeout(5000) });
             const data = await res.json();
 
             if (res.ok) {
-                apiStatusText.textContent = 'Online';
-                apiStatusText.style.color = '#10b981';
-                if (statusLabel) statusLabel.textContent = 'Online';
+                // Main header indicator
+                if (statusBadge) {
+                    statusBadge.classList.remove('offline', 'generating');
+                    statusBadge.classList.add('online');
+                }
+                // Sidebar status text
+                if (apiStatusText) {
+                    apiStatusText.textContent = 'Online';
+                    apiStatusText.style.color = '#10b981';
+                }
+                // Settings modal
                 if (settingsBadge) settingsBadge.textContent = '✓ Connected to AI Backend (Online)';
                 if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#10b981';
             } else {
-                apiStatusText.textContent = 'Offline';
-                apiStatusText.style.color = '#ef4444';
-                if (statusLabel) statusLabel.textContent = 'Offline';
-                if (settingsBadge) settingsBadge.textContent = '⚠ Backend status error';
-                if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
+                setOfflineState(settingsBadge, settingsBadgeWrap);
             }
         } catch (e) {
+            setOfflineState(settingsBadge, settingsBadgeWrap);
+        }
+    }
+
+    function setOfflineState(settingsBadge, settingsBadgeWrap) {
+        // Main header indicator
+        if (statusBadge) {
+            statusBadge.classList.remove('online', 'generating');
+            statusBadge.classList.add('offline');
+        }
+        // Sidebar status text
+        if (apiStatusText) {
             apiStatusText.textContent = 'Offline';
             apiStatusText.style.color = '#ef4444';
-            if (statusLabel) statusLabel.textContent = 'Offline';
-            if (settingsBadge) settingsBadge.textContent = '✗ Backend offline — try again later';
-            if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
         }
+        // Settings modal
+        if (settingsBadge) settingsBadge.textContent = '✗ Backend offline — try again later';
+        if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
     }
 
     function updateCurrentModelLabel(modelId) {
