@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Dynamic API URL Resolver
     // Production backend deployed on Render.com — API key lives there, never exposed to users
-    const RENDER_BACKEND_URL = 'https://jarvis-ai-backend.onrender.com';
+    const RENDER_BACKEND_URL = 'https://jarvis-ai-backend-8ndm.onrender.com';
 
     function getApiUrl(path) {
         // Local file or local dev server → use local Python backend
