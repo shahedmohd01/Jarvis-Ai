@@ -120,18 +120,7 @@
                             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
                         </svg>
                     </button>
-                    <button class="icon-btn theme-toggle-btn" id="themeToggleBtn" title="Toggle Theme">
-                        <svg class="sun-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                            stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="5" />
-                            <path
-                                d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
-                        </svg>
-                        <svg class="moon-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
-                            stroke="currentColor" stroke-width="2">
-                            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                        </svg>
-                    </button>
+
                 </div>
             </div>
         </aside>
@@ -183,20 +172,29 @@
                 </div>
 
                 <div class="header-right">
-                    <div class="status-badge" id="statusBadge">
+                    <div class="status-badge" id="statusBadge" style="cursor: default;" title="Online/Offline status">
                         <span class="status-dot"></span>
-                        <span class="status-label" id="statusLabel">Ready</span>
                     </div>
 
-                    <button class="icon-btn" id="clearChatBtn" title="Clear Current Chat">
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
-                            stroke-width="2">
-                            <path
-                                d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            <line x1="10" y1="11" x2="10" y2="17" />
-                            <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
-                    </button>
+                    <div class="user-profile-wrapper">
+                        <button class="profile-btn" id="userProfileBtn" title="Account Details">
+                            <img id="userProfileImgHeader" src="https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png" alt="Profile">
+                            <span id="userProfileInitialHeader" style="display: none;">AI</span>
+                        </button>
+                        
+                        <div class="profile-dropdown" id="profileDropdown">
+                            <div class="profile-dropdown-header">
+                                <img id="dropdownUserImg" src="https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png" alt="Profile">
+                                <div class="profile-dropdown-info">
+                                    <h4 id="dropdownUserName">Guest User</h4>
+                                    <p id="dropdownUserEmail">guest@jarvis.ai</p>
+                                </div>
+                            </div>
+                            <div class="profile-dropdown-actions">
+                                <button class="btn btn-secondary btn-block btn-sm" id="authSignOutBtn">Sign Out</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -220,48 +218,7 @@
                                 </defs>
                             </svg>
                         </div>
-                        <h1 class="welcome-title">What would you like to explore today?</h1>
-                        <p class="welcome-subtitle">Ask Jarvis AI code questions, analyze documents, write content, or
-                            solve complex problems.</p>
-                    </div>
-
-                    <!-- Starter Cards -->
-                    <div class="starter-cards-grid">
-                        <button class="starter-card"
-                            data-prompt="Write a Python script to scrape product data from a webpage using BeautifulSoup and save it as JSON.">
-                            <div class="card-icon">🐍</div>
-                            <div class="card-content">
-                                <div class="card-title">Python Web Scraper</div>
-                                <div class="card-desc">Generate python code with error handling & comments</div>
-                            </div>
-                        </button>
-
-                        <button class="starter-card"
-                            data-prompt="Explain Quantum Computing and Qubits in simple terms that a high school student can understand with real-world analogies.">
-                            <div class="card-icon">⚡</div>
-                            <div class="card-content">
-                                <div class="card-title">Explain Quantum Computing</div>
-                                <div class="card-desc">Clear breakdown with intuitive analogies</div>
-                            </div>
-                        </button>
-
-                        <button class="starter-card"
-                            data-prompt="Help me optimize and refactor my code for better performance, clean architecture, and legibility.">
-                            <div class="card-icon">🛠️</div>
-                            <div class="card-content">
-                                <div class="card-title">Code Refactoring & Audit</div>
-                                <div class="card-desc">Identify bugs, bottlenecks, and best practices</div>
-                            </div>
-                        </button>
-
-                        <button class="starter-card"
-                            data-prompt="Draft a professional, compelling pitch email for a new AI startup targeting seed investors.">
-                            <div class="card-icon">✉️</div>
-                            <div class="card-content">
-                                <div class="card-title">Investor Email Pitch</div>
-                                <div class="card-desc">Craft persuasive business correspondence</div>
-                            </div>
-                        </button>
+                        <h1 class="welcome-title">Hi There 👋🏻 Meet Jarvis Ai</h1>
                     </div>
                 </div>
 
@@ -349,7 +306,7 @@
                 </div>
 
                 <div class="input-disclaimer">
-                    Jarvis AI powered by Google Gemini API. Double check facts.
+                    Jarvis Ai Powered by Google Gemini. Double check facts.
                 </div>
             </div>
 
@@ -489,6 +446,18 @@
     </div>
     <input type="file" id="nativeCameraInput" accept="image/*" capture="environment" style="display: none;">
 
+
+    <!-- Image Preview Lightbox Modal -->
+    <div class="modal-backdrop" id="imagePreviewModal">
+        <div class="lightbox-card">
+            <button class="icon-btn close-modal-btn" id="closeImagePreviewBtn" title="Close">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+            </button>
+            <img id="lightboxImage" src="" alt="Preview">
+        </div>
+    </div>
 
     <!-- AUTHENTICATION OVERLAY -->
     <div class="auth-overlay" id="authOverlay" style="display: flex;">

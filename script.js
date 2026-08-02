@@ -1,5 +1,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getAuth, signInAnonymously, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 // ==========================================================================
 // FIREBASE CLIENT CONFIGURATION
@@ -19,10 +20,12 @@ const firebaseConfig = {
 const isFirebasePlaceholder = !firebaseConfig.apiKey || firebaseConfig.apiKey.startsWith("YOUR_");
 
 let auth;
+let db;
 if (!isFirebasePlaceholder) {
     try {
         const app = initializeApp(firebaseConfig);
         auth = getAuth(app);
+        db = getFirestore(app);
     } catch (e) {
         console.error("Firebase initialization failed:", e);
     }
@@ -236,9 +239,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- INITIALIZATION ---
     function init() {
-        // Load Saved Theme
-        const savedTheme = localStorage.getItem('mini_gpt_theme') || 'dark';
-        document.documentElement.setAttribute('data-theme', savedTheme);
+        // Force Load Dark Theme
+        document.documentElement.setAttribute('data-theme', 'dark');
+        localStorage.setItem('mini_gpt_theme', 'dark');
 
         // Load Settings to Inputs
         modelSelect.value = selectedModel;
@@ -415,12 +418,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return keys;
     }
 
+    async function syncChatsToCloud() {
+        if (!db || !currentUser || isFirebasePlaceholder) return;
+        try {
+            const userDocRef = doc(db, "users", currentUser.uid);
+            const validChats = chats.filter(c => c && c.id);
+            await setDoc(userDocRef, { chats: validChats }, { merge: true });
+        } catch (err) {
+            console.error("Failed to sync chats to Firestore:", err);
+        }
+    }
+
     function saveChatsToStorage() {
         if (!currentUser) return;
         const keys = getUserStorageKeys(currentUser);
         const validChats = chats.filter(c => c && c.id);
         const jsonStr = JSON.stringify(validChats);
         keys.forEach(key => localStorage.setItem(key, jsonStr));
+        syncChatsToCloud();
     }
 
     // --- MESSAGES RENDERING ---
@@ -488,6 +503,20 @@ document.addEventListener('DOMContentLoaded', () => {
                 ${actionsHtml}
             </div>
         `;
+
+        // Attach lightbox zoom listener for image attachments
+        const imgEl = row.querySelector('.message-image-attach');
+        if (imgEl) {
+            imgEl.style.cursor = 'zoom-in';
+            imgEl.addEventListener('click', () => {
+                const lightboxImage = document.getElementById('lightboxImage');
+                const imagePreviewModal = document.getElementById('imagePreviewModal');
+                if (lightboxImage && imagePreviewModal) {
+                    lightboxImage.src = imgEl.src;
+                    imagePreviewModal.classList.add('show');
+                }
+            });
+        }
 
         // Attach action buttons event listeners
         const copyBtn = row.querySelector('.copy-msg-btn');
@@ -985,24 +1014,28 @@ document.addEventListener('DOMContentLoaded', () => {
     chatSearchInput.addEventListener('input', (e) => renderHistory(e.target.value));
 
     // Clear Chat
-    clearChatBtn.addEventListener('click', () => {
-        if (confirm('Clear messages in this conversation?')) {
-            const activeChat = chats.find(c => c.id === currentChatId);
-            if (activeChat) {
-                activeChat.messages = [];
-                saveChatsToStorage();
-                selectChat(currentChatId);
+    if (clearChatBtn) {
+        clearChatBtn.addEventListener('click', () => {
+            if (confirm('Clear messages in this conversation?')) {
+                const activeChat = chats.find(c => c.id === currentChatId);
+                if (activeChat) {
+                    activeChat.messages = [];
+                    saveChatsToStorage();
+                    selectChat(currentChatId);
+                }
             }
-        }
-    });
+        });
+    }
 
     // Theme Toggle
-    themeToggleBtn.addEventListener('click', () => {
-        const currentTheme = document.documentElement.getAttribute('data-theme');
-        const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
-        document.documentElement.setAttribute('data-theme', nextTheme);
-        localStorage.setItem('mini_gpt_theme', nextTheme);
-    });
+    if (themeToggleBtn) {
+        themeToggleBtn.addEventListener('click', () => {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const nextTheme = currentTheme === 'light' ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', nextTheme);
+            localStorage.setItem('mini_gpt_theme', nextTheme);
+        });
+    }
 
     // Model Selector Dropdown
     modelPickerBtn.addEventListener('click', () => modelDropdown.classList.toggle('show'));
@@ -1035,6 +1068,46 @@ document.addEventListener('DOMContentLoaded', () => {
             modelDropdown.classList.remove('show');
         });
     });
+
+    // --- USER PROFILE HEADER DROPDOWN ---
+    const userProfileBtn = document.getElementById('userProfileBtn');
+    const profileDropdown = document.getElementById('profileDropdown');
+    const authSignOutBtn = document.getElementById('authSignOutBtn');
+
+    if (userProfileBtn && profileDropdown) {
+        userProfileBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            profileDropdown.classList.toggle('show');
+        });
+        document.addEventListener('click', (e) => {
+            if (!userProfileBtn.contains(e.target) && !profileDropdown.contains(e.target)) {
+                profileDropdown.classList.remove('show');
+            }
+        });
+    }
+
+    if (authSignOutBtn) {
+        authSignOutBtn.addEventListener('click', async () => {
+            try {
+                await authManager.signOut();
+                if (profileDropdown) profileDropdown.classList.remove('show');
+            } catch (err) {
+                console.error('Sign out error:', err);
+            }
+        });
+    }
+
+    // --- IMAGE PREVIEW LIGHTBOX MODAL ---
+    const closeImagePreviewBtn = document.getElementById('closeImagePreviewBtn');
+    const imagePreviewModal = document.getElementById('imagePreviewModal');
+    if (closeImagePreviewBtn && imagePreviewModal) {
+        closeImagePreviewBtn.addEventListener('click', () => imagePreviewModal.classList.remove('show'));
+        imagePreviewModal.addEventListener('click', (e) => {
+            if (e.target === imagePreviewModal) {
+                imagePreviewModal.classList.remove('show');
+            }
+        });
+    }
 
     // Settings Modal
     openSettingsBtn.addEventListener('click', () => settingsModal.classList.add('show'));
@@ -1344,7 +1417,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Set user profile info
             const displayName = user.displayName || (user.isAnonymous ? 'Guest User' : user.email.split('@')[0]);
+            const displayEmail = user.email || (user.isAnonymous ? 'Anonymous Session' : 'No Email');
+            
             if (userNameEl) userNameEl.textContent = displayName;
+
+            // Update dropdown values
+            const dropdownUserName = document.getElementById('dropdownUserName');
+            const dropdownUserEmail = document.getElementById('dropdownUserEmail');
+            if (dropdownUserName) dropdownUserName.textContent = displayName;
+            if (dropdownUserEmail) dropdownUserEmail.textContent = displayEmail;
 
             if (user.email && !user.isAnonymous) {
                 if (userEmailEl) {
@@ -1355,17 +1436,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (userEmailEl) userEmailEl.style.display = 'none';
             }
 
+            // Set header profile button image/initial
+            const userProfileImgHeader = document.getElementById('userProfileImgHeader');
+            const userProfileInitialHeader = document.getElementById('userProfileInitialHeader');
+            const dropdownUserImg = document.getElementById('dropdownUserImg');
+
             if (user.photoURL) {
                 if (userAvatarImg) {
                     userAvatarImg.src = user.photoURL;
                     userAvatarImg.style.display = 'block';
                 }
                 if (userAvatarInitial) userAvatarInitial.style.display = 'none';
+
+                if (userProfileImgHeader) {
+                    userProfileImgHeader.src = user.photoURL;
+                    userProfileImgHeader.style.display = 'block';
+                }
+                if (userProfileInitialHeader) userProfileInitialHeader.style.display = 'none';
+
+                if (dropdownUserImg) {
+                    dropdownUserImg.src = user.photoURL;
+                }
             } else {
                 if (userAvatarImg) userAvatarImg.style.display = 'none';
                 if (userAvatarInitial) {
                     userAvatarInitial.style.display = 'block';
                     userAvatarInitial.textContent = user.isAnonymous ? 'G' : displayName.charAt(0).toUpperCase();
+                }
+
+                if (userProfileImgHeader) {
+                    userProfileImgHeader.src = "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png";
+                    userProfileImgHeader.style.display = 'block';
+                }
+                if (userProfileInitialHeader) userProfileInitialHeader.style.display = 'none';
+
+                if (dropdownUserImg) {
+                    dropdownUserImg.src = "https://www.gstatic.com/images/branding/product/2x/avatar_112_color_96dp.png";
                 }
             }
 
@@ -1394,11 +1500,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function loadUserChats(user) {
+    async function loadUserChats(user) {
         if (!user) return;
         const keys = getUserStorageKeys(user);
         const mergedMap = new Map();
 
+        // 1. Load local cache instantly
         keys.forEach(key => {
             try {
                 const stored = JSON.parse(localStorage.getItem(key) || '[]');
@@ -1421,11 +1528,49 @@ document.addEventListener('DOMContentLoaded', () => {
         chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
         if (chats.length > 0) {
-            saveChatsToStorage(); // persist merged chats back to all user keys
             renderHistory();
             selectChat(chats[0].id);
         } else {
             createNewChat();
+        }
+
+        // 2. Load and merge from Firestore cloud sync
+        if (!db || isFirebasePlaceholder) return;
+        try {
+            const userDocRef = doc(db, "users", user.uid);
+            const docSnap = await getDoc(userDocRef);
+            if (docSnap.exists()) {
+                const cloudData = docSnap.data();
+                if (cloudData && Array.isArray(cloudData.chats)) {
+                    cloudData.chats.forEach(chat => {
+                        if (chat && chat.id) {
+                            const existing = mergedMap.get(chat.id);
+                            const chatMsgs = chat.messages ? chat.messages.length : 0;
+                            const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
+                            if (!existing || chatMsgs >= existingMsgs) {
+                                mergedMap.set(chat.id, chat);
+                            }
+                        }
+                    });
+
+                    chats = Array.from(mergedMap.values());
+                    chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+                    // Save merged back to storage
+                    const jsonStr = JSON.stringify(chats);
+                    keys.forEach(key => localStorage.setItem(key, jsonStr));
+
+                    // Refresh history and selection
+                    renderHistory();
+                    if (currentChatId && chats.some(c => c.id === currentChatId)) {
+                        selectChat(currentChatId);
+                    } else if (chats.length > 0) {
+                        selectChat(chats[0].id);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error("Error loading chats from Firestore:", err);
         }
     }
 
