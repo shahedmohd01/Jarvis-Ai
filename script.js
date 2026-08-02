@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentUser = null;
     let currentChatId = null;
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
-    // API key is managed server-side on Render — not stored in the browser
+    let userApiKey = localStorage.getItem('mini_gpt_apikey') || '';
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.2');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
     let currentAttachment = null; // { mime_type, data, name }
@@ -248,6 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         temperatureSlider.value = temperature;
         tempVal.textContent = temperature;
         systemInstructionInput.value = systemInstruction;
+        if (apiKeyInput) apiKeyInput.value = userApiKey;
         updateCurrentModelLabel(selectedModel);
 
         // Check Backend Health & API Key Status — runs once on load, then every 30s
@@ -752,56 +753,74 @@ document.addEventListener('DOMContentLoaded', () => {
             const dateStr = clientTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
             const timeStr = clientTime.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-            const payload = {
-                messages: activeChat.messages,
-                model: selectedModel,
-                temperature: temperature,
-                system_instruction: systemInstruction,
-                client_time: {
-                    date: dateStr,
-                    time: timeStr
-                }
-                // api_key intentionally omitted — key lives on the server
+            // Model name mapping (client uses friendly names; API uses real IDs)
+            const modelMap = {
+                'gemini-3.5-flash-lite': 'gemini-3.1-flash-lite',
+                'gemini-2.5-flash-lite': 'gemini-2.0-flash-lite',
+                'gemini-3.1-flash-lite': 'gemini-3.1-flash-lite',
             };
+            const apiModel = modelMap[selectedModel] || selectedModel;
 
-            const headers = { 'Content-Type': 'application/json' };
+            const dateCtx = `\n\n[System Context: The current date is ${dateStr} and the current local time is ${timeStr}. Use this date/time context when responding to queries about dates, times, days, or schedules.]`;
+            const sysText = 'You are Jarvis AI, a helpful, professional, and highly capable AI assistant. If asked about your name, identity, or who created you, always respond that you are Jarvis AI, powered by Google Gemini. ' + (systemInstruction || '') + dateCtx;
 
-            // Auto-retry logic for Render free-tier cold starts (server wakes in ~30s)
-            let response;
-            const MAX_RETRIES = 4;
-            const RETRY_DELAY_MS = 8000;
-            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-                try {
-                    response = await fetch(getApiUrl('/api/chat/stream'), {
-                        method: 'POST',
-                        headers: headers,
-                        body: JSON.stringify(payload),
-                        signal: abortController.signal
-                    });
-                    break; // Success — exit retry loop
-                } catch (fetchErr) {
-                    if (fetchErr.name === 'AbortError') throw fetchErr; // User stopped
-                    if (attempt < MAX_RETRIES) {
-                        // Show waking-up hint inside the AI bubble
-                        bubble.innerHTML = `<span style="opacity:0.6; font-style:italic">⏳ Waking up server... (attempt ${attempt}/${MAX_RETRIES - 1})</span>`;
-                        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
-                    } else {
-                        throw fetchErr; // All retries exhausted
-                    }
+            // Build Gemini contents array
+            const contents = activeChat.messages.map(m => {
+                const parts = [];
+                if (m.image && m.image.data) {
+                    parts.push({ inlineData: { mimeType: m.image.mime_type, data: m.image.data } });
                 }
-            }
+                if (m.content) parts.push({ text: m.content });
+                return { role: m.role === 'model' ? 'model' : 'user', parts };
+            });
 
-            // Clear the waking-up message before streaming real content
-            bubble.innerHTML = '';
+            // Determine which API key and endpoint to use
+            const key = userApiKey.trim();
+            let response;
+
+            if (key) {
+                // --- DIRECT GEMINI API (fast, no cold start) ---
+                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${apiModel}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+                response = await fetch(geminiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents,
+                        systemInstruction: { parts: [{ text: sysText }] },
+                        generationConfig: { temperature }
+                    }),
+                    signal: abortController.signal
+                });
+            } else {
+                // --- FALLBACK: Render backend ---
+                const payload = {
+                    messages: activeChat.messages,
+                    model: selectedModel,
+                    temperature,
+                    system_instruction: systemInstruction,
+                    client_time: { date: dateStr, time: timeStr }
+                };
+                response = await fetch(getApiUrl('/api/chat/stream'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                    signal: abortController.signal
+                });
+            }
 
             if (!response.ok) {
                 const errJson = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
-                throw new Error(errJson.detail || errJson.message || `Server error (${response.status})`);
+                const errMsg = errJson.error?.message || errJson.detail || errJson.message || `Server error (${response.status})`;
+                throw new Error(errMsg);
             }
+
+            // Show 3-dot typing animation while waiting for first chunk
+            bubble.innerHTML = '<span class="typing-dots"><span></span><span></span><span></span></span>';
 
             const reader = response.body.getReader();
             const decoder = new TextDecoder('utf-8');
             let buffer = '';
+            let firstChunk = true;
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -809,29 +828,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
-                buffer = lines.pop(); // Keep partial line in buffer
+                buffer = lines.pop();
 
                 for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const jsonStr = line.slice(6).trim();
-                        if (!jsonStr) continue;
+                    if (!line.startsWith('data: ')) continue;
+                    const jsonStr = line.slice(6).trim();
+                    if (!jsonStr || jsonStr === '[DONE]') continue;
 
-                        try {
-                            const parsed = JSON.parse(jsonStr);
-                            if (parsed.error) {
-                                throw new Error(parsed.error);
+                    try {
+                        const parsed = JSON.parse(jsonStr);
+
+                        // Handle direct Gemini API SSE format
+                        const geminiText = parsed.candidates?.[0]?.content?.parts?.[0]?.text;
+                        // Handle Render backend format
+                        const backendText = parsed.text;
+                        // Handle errors from both
+                        const errMsg = parsed.error?.message || parsed.error;
+
+                        if (errMsg) throw new Error(errMsg);
+
+                        const chunk = geminiText ?? backendText;
+                        if (chunk !== undefined && chunk !== null) {
+                            if (firstChunk) {
+                                bubble.innerHTML = ''; // Clear typing dots
+                                firstChunk = false;
                             }
-                            if (parsed.text) {
-                                fullAiText += parsed.text;
-                                bubble.innerHTML = window.marked ? marked.parse(fullAiText) : escapeHtml(fullAiText);
-                                enhanceCodeBlocks(aiRow);
-                                scrollToBottom();
-                            }
-                        } catch (e) {
-                            if (e.message !== 'Unexpected end of JSON input') {
-                                console.error('Error parsing SSE data:', e);
-                                throw e;
-                            }
+                            fullAiText += chunk;
+                            bubble.innerHTML = window.marked ? marked.parse(fullAiText) : escapeHtml(fullAiText);
+                            enhanceCodeBlocks(aiRow);
+                            scrollToBottom();
+                        }
+                    } catch (e) {
+                        if (e.message !== 'Unexpected end of JSON input') {
+                            console.error('SSE parse error:', e);
+                            throw e;
                         }
                     }
                 }
@@ -854,7 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 let msg = err.message || 'Unknown error';
                 if (msg === 'Failed to fetch' || msg.includes('NetworkError') || msg.includes('fetch')) {
-                    msg = '⚠️ Could not reach the AI backend after multiple attempts. The server may still be starting up. Please wait a moment and try sending your message again.';
+                    msg = '⚠️ Could not reach the AI. Check your internet connection or verify your API key in Settings.';
                 }
                 fullAiText += `\n\n${msg}`;
             }
@@ -1206,6 +1236,10 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSettingsBtn.addEventListener('click', () => {
         selectedModel = modelSelect.value;
         temperature = parseFloat(temperatureSlider.value);
+        if (apiKeyInput) {
+            userApiKey = apiKeyInput.value.trim();
+            localStorage.setItem('mini_gpt_apikey', userApiKey);
+        }
 
         localStorage.setItem('mini_gpt_model', selectedModel);
         localStorage.setItem('mini_gpt_temp', temperature);
@@ -1214,6 +1248,13 @@ document.addEventListener('DOMContentLoaded', () => {
         checkBackendStatus();
         settingsModal.classList.remove('show');
     });
+
+    // Toggle API key visibility
+    if (togglePasswordBtn && apiKeyInput) {
+        togglePasswordBtn.addEventListener('click', () => {
+            apiKeyInput.type = apiKeyInput.type === 'password' ? 'text' : 'password';
+        });
+    }
 
     // Persona Modal
     personaBtn.addEventListener('click', () => personaModal.classList.add('show'));

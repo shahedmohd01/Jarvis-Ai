@@ -534,6 +534,43 @@ button {
         opacity: 1;
     }
 }
+}
+
+/* 3-Dot Typing Animation */
+.typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 0;
+}
+
+.typing-dots span {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(1) { animation-delay: 0s; }
+.typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+.typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+    30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* API Key input wrapper in settings */
+.api-key-input-wrapper {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.api-key-input-wrapper input {
+    flex: 1;
+}
 
 /* Chat Viewport */
 .chat-viewport {

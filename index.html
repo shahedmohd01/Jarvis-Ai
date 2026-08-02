@@ -348,7 +348,18 @@
                         </svg>
                         <span id="backendStatusLabel">Checking connection...</span>
                     </div>
-                    <span class="form-help">The AI backend is managed centrally — no API key needed.</span>
+                    <span class="form-help">Using your own Gemini API key calls Google directly — instant responses, no server cold starts.</span>
+                </div>
+
+                <div class="form-group">
+                    <label for="apiKeyInput">Gemini API Key</label>
+                    <div class="api-key-input-wrapper">
+                        <input type="password" id="apiKeyInput" placeholder="Paste your Gemini API key here (AIza...)" autocomplete="off">
+                        <button class="icon-btn" id="togglePasswordBtn" title="Show/Hide Key">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                    <span class="form-help">Get your free API key at <a href="https://aistudio.google.com/app/apikey" target="_blank" style="color:var(--accent-primary)">aistudio.google.com</a>. Key is stored only in your browser.</span>
                 </div>
 
                 <div class="form-group">
