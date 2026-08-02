@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentChatId = null;
     let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
     // API key is managed server-side on Render — not stored in the browser
-    let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.7');
+    let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.2');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
     let currentAttachment = null; // { mime_type, data, name }
     let isGenerating = false;
@@ -279,20 +279,23 @@ document.addEventListener('DOMContentLoaded', () => {
             const res = await fetch(getApiUrl('/api/health'));
             const data = await res.json();
 
-            if (data.api_key_configured) {
-                apiStatusText.textContent = 'API Ready';
+            if (res.ok) {
+                apiStatusText.textContent = 'Online';
                 apiStatusText.style.color = '#10b981';
-                if (settingsBadge) settingsBadge.textContent = '✓ Connected — API key active';
+                if (statusLabel) statusLabel.textContent = 'Online';
+                if (settingsBadge) settingsBadge.textContent = '✓ Connected to AI Backend (Online)';
                 if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#10b981';
             } else {
-                apiStatusText.textContent = 'Backend Online';
-                apiStatusText.style.color = '#f59e0b';
-                if (settingsBadge) settingsBadge.textContent = '⚠ Backend reachable but no API key set';
-                if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#f59e0b';
+                apiStatusText.textContent = 'Offline';
+                apiStatusText.style.color = '#ef4444';
+                if (statusLabel) statusLabel.textContent = 'Offline';
+                if (settingsBadge) settingsBadge.textContent = '⚠ Backend status error';
+                if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
             }
         } catch (e) {
             apiStatusText.textContent = 'Offline';
             apiStatusText.style.color = '#ef4444';
+            if (statusLabel) statusLabel.textContent = 'Offline';
             if (settingsBadge) settingsBadge.textContent = '✗ Backend offline — try again later';
             if (settingsBadgeWrap) settingsBadgeWrap.style.color = '#ef4444';
         }
@@ -978,34 +981,56 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CAMERA SNAP OPTION ---
     let cameraStream = null;
+    let cameraFacingMode = 'user';
+    const switchCameraBtn = document.getElementById('switchCameraBtn');
 
-    async function startCamera() {
+    async function startCamera(facingMode = 'user') {
+        stopCameraTracksOnly();
+        cameraFacingMode = facingMode;
         try {
             cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' },
+                video: { facingMode: facingMode },
                 audio: false
             });
             cameraVideo.srcObject = cameraStream;
             cameraModal.classList.add('show');
         } catch (err) {
             console.error("Camera access failed:", err);
-            alert("Could not access camera. Please check your browser permissions.");
+            // Fallback try without facingMode constraint if specific mode fails
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                cameraVideo.srcObject = cameraStream;
+                cameraModal.classList.add('show');
+            } catch (err2) {
+                alert("Could not access camera. Please check browser permissions.");
+            }
         }
     }
 
-    function stopCamera() {
+    function stopCameraTracksOnly() {
         if (cameraStream) {
             cameraStream.getTracks().forEach(track => track.stop());
             cameraStream = null;
         }
         cameraVideo.srcObject = null;
+    }
+
+    function stopCamera() {
+        stopCameraTracksOnly();
         cameraModal.classList.remove('show');
+    }
+
+    if (switchCameraBtn) {
+        switchCameraBtn.addEventListener('click', () => {
+            const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+            startCamera(nextMode);
+        });
     }
 
     if (cameraBtn) {
         cameraBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            startCamera();
+            startCamera('user');
             if (attachmentMenu) {
                 attachmentMenu.classList.remove('show');
                 addBtnIcon.style.transform = 'none';
@@ -1024,9 +1049,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const ctx = cameraCanvas.getContext('2d');
 
-            // Mirror canvas context drawing for naturally matched snapshot
-            ctx.translate(cameraCanvas.width, 0);
-            ctx.scale(-1, 1);
+            // Mirror canvas drawing only for front ('user') camera
+            if (cameraFacingMode === 'user') {
+                ctx.translate(cameraCanvas.width, 0);
+                ctx.scale(-1, 1);
+            }
             ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
 
             const base64Data = cameraCanvas.toDataURL('image/jpeg').split(',')[1];
@@ -1237,28 +1264,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Auth Form & Social Buttons Listeners
+    // Auth Form & View Switching Listeners
+    const authViewSignIn = document.getElementById('authViewSignIn');
+    const authViewSignUp = document.getElementById('authViewSignUp');
+    const goToSignUp = document.getElementById('goToSignUp');
+    const goToSignIn = document.getElementById('goToSignIn');
+
+    const authEmailSignIn = document.getElementById('authEmailSignIn');
+    const authPasswordSignIn = document.getElementById('authPasswordSignIn');
+    const authEmailSignUp = document.getElementById('authEmailSignUp');
+    const authPasswordSignUp = document.getElementById('authPasswordSignUp');
+
+    const toggleSignInPwd = document.getElementById('toggleSignInPwd');
+    const toggleSignUpPwd = document.getElementById('toggleSignUpPwd');
+
     const authSignInBtn = document.getElementById('authSignInBtn');
     const authSignUpBtn = document.getElementById('authSignUpBtn');
-    const authEmail = document.getElementById('authEmail');
-    const authPassword = document.getElementById('authPassword');
-    const authGoogleBtn = document.getElementById('authGoogleBtn');
-    const authGuestBtn = document.getElementById('authGuestBtn');
+
+    const authGoogleBtnSignIn = document.getElementById('authGoogleBtnSignIn');
+    const authGoogleBtnSignUp = document.getElementById('authGoogleBtnSignUp');
+
     const authError = document.getElementById('authError');
-
-    function getAuthInputs() {
-        const email = authEmail ? authEmail.value.trim() : '';
-        const password = authPassword ? authPassword.value : '';
-        return { email, password };
-    }
-
-    function setAuthBusy(btn, label, busy) {
-        if (!btn) return;
-        btn.disabled = busy;
-        btn.querySelector('svg').style.opacity = busy ? '0.4' : '1';
-        const textNode = btn.lastChild;
-        if (textNode && textNode.nodeType === 3) textNode.textContent = ' ' + (busy ? label : btn.id === 'authSignInBtn' ? 'Sign In' : 'Sign Up');
-    }
 
     function showAuthError(msg) {
         if (!authError) return;
@@ -1267,72 +1293,121 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function clearAuthError() {
-        if (authError) authError.style.display = 'none';
+        if (authError) {
+            authError.textContent = '';
+            authError.style.display = 'none';
+        }
     }
 
-    if (authSignInBtn) {
-        authSignInBtn.addEventListener('click', async () => {
-            const { email, password } = getAuthInputs();
-            if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
+    // View Switchers
+    if (goToSignUp) {
+        goToSignUp.addEventListener('click', (e) => {
+            e.preventDefault();
             clearAuthError();
-            setAuthBusy(authSignInBtn, 'Signing In...', true);
+            if (authViewSignIn) authViewSignIn.style.display = 'none';
+            if (authViewSignUp) authViewSignUp.style.display = 'block';
+        });
+    }
+
+    if (goToSignIn) {
+        goToSignIn.addEventListener('click', (e) => {
+            e.preventDefault();
+            clearAuthError();
+            if (authViewSignUp) authViewSignUp.style.display = 'none';
+            if (authViewSignIn) authViewSignIn.style.display = 'block';
+        });
+    }
+
+    // Password Eye Toggles
+    function setupPasswordToggle(btn, inputEl) {
+        if (!btn || !inputEl) return;
+        btn.addEventListener('click', () => {
+            const isPwd = inputEl.type === 'password';
+            inputEl.type = isPwd ? 'text' : 'password';
+            btn.style.color = isPwd ? 'var(--accent-primary)' : 'var(--text-muted)';
+        });
+    }
+    setupPasswordToggle(toggleSignInPwd, authPasswordSignIn);
+    setupPasswordToggle(toggleSignUpPwd, authPasswordSignUp);
+
+    // Sign In Handler
+    if (authSignInBtn) {
+        authSignInBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = authEmailSignIn ? authEmailSignIn.value.trim() : '';
+            const password = authPasswordSignIn ? authPasswordSignIn.value : '';
+
+            if (!email || !password) {
+                showAuthError('Please enter both your email address and password.');
+                return;
+            }
+            clearAuthError();
+            authSignInBtn.disabled = true;
+            authSignInBtn.textContent = 'Signing In...';
+
             try {
                 await authManager.signInWithEmail(email, password);
             } catch (err) {
                 console.error('Sign In error:', err);
-                showAuthError(err.message || 'Sign in failed. Please try again.');
+                showAuthError(err.message || 'Sign in failed. Please check your credentials.');
             } finally {
-                setAuthBusy(authSignInBtn, '', false);
+                authSignInBtn.disabled = false;
+                authSignInBtn.textContent = 'Sign In';
             }
         });
     }
 
+    // Sign Up Handler
     if (authSignUpBtn) {
-        authSignUpBtn.addEventListener('click', async () => {
-            const { email, password } = getAuthInputs();
-            if (!email || !password) { showAuthError('Please enter your email and password.'); return; }
-            if (password.length < 6) { showAuthError('Password must be at least 6 characters.'); return; }
+        authSignUpBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            const email = authEmailSignUp ? authEmailSignUp.value.trim() : '';
+            const password = authPasswordSignUp ? authPasswordSignUp.value : '';
+
+            if (!email || !password) {
+                showAuthError('Please enter an email address and password.');
+                return;
+            }
+            if (password.length < 6) {
+                showAuthError('Password must be at least 6 characters long.');
+                return;
+            }
             clearAuthError();
-            setAuthBusy(authSignUpBtn, 'Registering...', true);
+            authSignUpBtn.disabled = true;
+            authSignUpBtn.textContent = 'Registering...';
+
             try {
                 await authManager.signUpWithEmail(email, password);
             } catch (err) {
                 console.error('Sign Up error:', err);
                 showAuthError(err.message || 'Registration failed. Please try again.');
             } finally {
-                setAuthBusy(authSignUpBtn, '', false);
+                authSignUpBtn.disabled = false;
+                authSignUpBtn.textContent = 'Sign Up';
             }
         });
     }
 
-    if (authGoogleBtn) {
-        authGoogleBtn.addEventListener('click', async () => {
-            authGoogleBtn.disabled = true;
-            clearAuthError();
-            try {
-                await authManager.signInWithGoogle();
-            } catch (err) {
-                console.error('Google Auth error:', err);
-                showAuthError(err.message || 'Failed to sign in with Google.');
-            } finally {
-                authGoogleBtn.disabled = false;
-            }
-        });
+    // Google Sign In Handlers
+    async function handleGoogleSignIn(btn) {
+        if (!btn) return;
+        btn.disabled = true;
+        clearAuthError();
+        try {
+            await authManager.signInWithGoogle();
+        } catch (err) {
+            console.error('Google Auth error:', err);
+            showAuthError(err.message || 'Failed to sign in with Google.');
+        } finally {
+            btn.disabled = false;
+        }
     }
 
-    if (authGuestBtn) {
-        authGuestBtn.addEventListener('click', async () => {
-            authGuestBtn.disabled = true;
-            clearAuthError();
-            try {
-                await authManager.signInAnonymously();
-            } catch (err) {
-                console.error('Guest Auth error:', err);
-                showAuthError(err.message || 'Failed to continue as Guest.');
-            } finally {
-                authGuestBtn.disabled = false;
-            }
-        });
+    if (authGoogleBtnSignIn) {
+        authGoogleBtnSignIn.addEventListener('click', () => handleGoogleSignIn(authGoogleBtnSignIn));
+    }
+    if (authGoogleBtnSignUp) {
+        authGoogleBtnSignUp.addEventListener('click', () => handleGoogleSignIn(authGoogleBtnSignUp));
     }
 
     if (logoutBtn) {
