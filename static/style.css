@@ -63,6 +63,30 @@
     padding: 0;
 }
 
+/* Custom Scrollbar Styles (Theme-aware) */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
+}
+
 body {
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     background-color: var(--bg-main);
@@ -153,7 +177,16 @@ button {
     display: flex;
     flex-direction: column;
     z-index: 50;
-    transition: transform var(--transition-normal);
+    overflow: hidden;
+    transition: width var(--transition-normal), opacity var(--transition-normal), border var(--transition-normal);
+}
+
+.sidebar.collapsed {
+    width: 0 !important;
+    min-width: 0 !important;
+    border-right: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
 }
 
 .sidebar-header {
@@ -1008,6 +1041,7 @@ textarea {
         left: 0;
         top: 0;
         transform: translateX(-100%);
+        margin-left: 0 !important;
     }
 
     .sidebar.open {
@@ -1017,4 +1051,259 @@ textarea {
     .close-sidebar-btn {
         display: flex;
     }
+}
+
+/* ==========================================================================
+   SIDEBAR COLLAPSED & CENTER BRAND
+   ========================================================================== */
+.header-center-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    opacity: 1; /* Show by default when sidebar is closed */
+    pointer-events: auto;
+    transition: opacity var(--transition-normal);
+}
+
+/* Hide center brand on desktop when sidebar is open */
+.sidebar:not(.collapsed) ~ .main-content .header-center-brand {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Hide center brand on mobile when sidebar is open drawer */
+@media (max-width: 768px) {
+    .sidebar.open ~ .main-content .header-center-brand {
+        opacity: 0;
+        pointer-events: none;
+    }
+}
+
+/* ==========================================================================
+   CAMERA ATTACHMENT MODAL
+   ========================================================================== */
+.camera-modal-card {
+    max-width: 640px !important;
+}
+
+.camera-body {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4/3;
+    background: #000;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#cameraVideo {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror view for natural snapping */
+}
+
+/* ==========================================================================
+   MICROPHONE / VOICE INPUT RECORDING
+   ========================================================================== */
+.mic-btn.recording {
+    color: #ef4444 !important;
+    background: rgba(239, 68, 68, 0.15);
+    border-color: rgba(239, 68, 68, 0.3) !important;
+    animation: pulse-red 1.5s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
+/* ==========================================================================
+   FLOATING ATTACHMENT MENU
+   ========================================================================== */
+.input-actions-left {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.attachment-menu {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.45);
+    padding: 6px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    z-index: 100;
+    min-width: 160px;
+    animation: menuFadeIn 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.attachment-menu.show {
+    display: flex;
+}
+
+@keyframes menuFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.attachment-menu .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border: none;
+    background: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: 0.88rem;
+    font-weight: 500;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: background 0.15s, color 0.15s;
+}
+
+.attachment-menu .menu-item:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.attachment-menu .menu-item svg {
+    flex-shrink: 0;
+    color: var(--accent-primary);
+}
+
+.add-btn {
+    color: var(--text-secondary);
+    transition: color 0.2s;
+}
+
+.add-btn:hover {
+    color: var(--text-primary);
+}
+
+/* ==========================================================================
+   DYNAMIC SEND & MICROPHONE BUTTON TOGGLING
+   ========================================================================== */
+.send-btn {
+    display: none !important;
+}
+
+.input-box.has-input .send-btn {
+    display: flex !important;
+}
+
+/* ==========================================================================
+   MESSAGE ACTION BAR (COPY & EDIT)
+   ========================================================================== */
+.message-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    opacity: 0;
+    transition: opacity var(--transition-fast);
+}
+
+.message-row:hover .message-actions {
+    opacity: 1;
+}
+
+/* Show actions on touch devices since hover is not active */
+@media (max-width: 768px) {
+    .message-actions {
+        opacity: 0.6;
+    }
+}
+
+.action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-sm);
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.action-btn:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+.action-btn svg {
+    display: block;
+}
+
+/* ==========================================================================
+   INLINE MESSAGE EDIT BOX
+   ========================================================================== */
+.message-edit-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    margin-top: 8px;
+}
+
+.message-edit-textarea {
+    width: 100%;
+    min-height: 80px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    padding: 10px 14px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    resize: vertical;
+    outline: none;
+    transition: border-color var(--transition-fast);
+}
+
+.message-edit-textarea:focus {
+    border-color: var(--accent-primary);
+}
+
+.message-edit-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.btn-sm {
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+    border-radius: var(--radius-sm) !important;
 }

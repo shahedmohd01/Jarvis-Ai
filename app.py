@@ -182,24 +182,9 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
 
-# NEW UPDATED CODE:
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-static_dir = os.path.join(BASE_DIR, "static")
-
+static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
-    # Mounts static files (CSS, JS, Images) at /static
-    app.mount("/static", StaticFiles(directory=static_dir, html=True), name="static")
-
-@app.get("/")
-async def root():
-    index_path = os.path.join(static_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    # Fallback if index.html is located in root directory
-    root_index = os.path.join(BASE_DIR, "index.html")
-    if os.path.exists(root_index):
-        return FileResponse(root_index)
-    return {"message": "Jarvis AI Backend is running."}
+    app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn

@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // State Variables
     let chats = JSON.parse(localStorage.getItem('mini_gpt_chats') || '[]');
     let currentChatId = null;
-    let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash';
+    let selectedModel = localStorage.getItem('mini_gpt_model') || 'gemini-3.5-flash-lite';
     let apiKey = localStorage.getItem('mini_gpt_api_key') || '';
     let temperature = parseFloat(localStorage.getItem('mini_gpt_temp') || '0.7');
     let systemInstruction = localStorage.getItem('mini_gpt_persona') || '';
@@ -62,6 +62,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const systemInstructionInput = document.getElementById('systemInstructionInput');
     const chipBtns = document.querySelectorAll('.chip-btn');
 
+    // Camera & Voice Elements
+    const cameraBtn = document.getElementById('cameraBtn');
+    const micBtn = document.getElementById('micBtn');
+    const cameraModal = document.getElementById('cameraModal');
+    const cameraVideo = document.getElementById('cameraVideo');
+    const cameraCanvas = document.getElementById('cameraCanvas');
+    const closeCameraModalBtn = document.getElementById('closeCameraModalBtn');
+    const cancelCameraBtn = document.getElementById('cancelCameraBtn');
+    const capturePhotoBtn = document.getElementById('capturePhotoBtn');
+
+    // Collapsible Menu & Input Box elements
+    const addBtn = document.getElementById('addBtn');
+    const attachmentMenu = document.getElementById('attachmentMenu');
+    const addBtnIcon = document.getElementById('addBtnIcon');
+    const inputBox = document.querySelector('.input-box');
+
     // Initialize Marked & Highlight.js
     if (window.marked) {
         marked.setOptions({
@@ -104,6 +120,9 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             createNewChat();
         }
+
+        // Initialize microphone vs send button visibility
+        updateInputDisplay();
     }
 
     // Dynamic API URL Resolver
@@ -244,16 +263,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- MESSAGES RENDERING ---
     function renderMessages(messages) {
         messagesList.innerHTML = '';
-        messages.forEach(msg => {
-            appendMessageUI(msg.role, msg.content, msg.image, false);
+        messages.forEach((msg, idx) => {
+            appendMessageUI(msg.role, msg.content, msg.image, false, idx);
         });
         scrollToBottom();
     }
 
-    function appendMessageUI(role, content, image = null, isStreaming = false) {
+    function appendMessageUI(role, content, image = null, isStreaming = false, index = null) {
         const isUser = role === 'user';
         const row = document.createElement('div');
         row.className = `message-row ${isUser ? 'user-row' : 'ai-row'}`;
+        if (index !== null) {
+            row.dataset.index = index;
+        }
 
         const avatarHtml = isUser 
             ? `<div class="message-avatar">You</div>`
@@ -273,12 +295,59 @@ document.addEventListener('DOMContentLoaded', () => {
             bodyHtml += `<div class="message-bubble">${parsedMarkdown}</div>`;
         }
 
+        // Copy and Edit actions bar below bubbles
+        let actionsHtml = '';
+        if (!isStreaming) {
+            actionsHtml = `
+                <div class="message-actions">
+                    <button class="action-btn copy-msg-btn" title="Copy text">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                    </button>
+                    ${isUser ? `
+                    <button class="action-btn edit-msg-btn" title="Edit message">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+                            <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+                        </svg>
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
         row.innerHTML = `
             ${avatarHtml}
             <div class="message-content-wrapper">
                 ${bodyHtml}
+                ${actionsHtml}
             </div>
         `;
+
+        // Attach action buttons event listeners
+        const copyBtn = row.querySelector('.copy-msg-btn');
+        if (copyBtn) {
+            copyBtn.addEventListener('click', () => {
+                navigator.clipboard.writeText(content).then(() => {
+                    const originalSvg = copyBtn.innerHTML;
+                    copyBtn.innerHTML = `
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#10b981" stroke-width="2">
+                            <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                    `;
+                    setTimeout(() => { copyBtn.innerHTML = originalSvg; }, 2000);
+                });
+            });
+        }
+
+        const editBtn = row.querySelector('.edit-msg-btn');
+        if (editBtn && isUser && index !== null) {
+            editBtn.addEventListener('click', () => {
+                startInlineEdit(row, content, index);
+            });
+        }
 
         messagesList.appendChild(row);
         
@@ -334,6 +403,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const text = textPrompt || userInput.value.trim();
         if ((!text && !currentAttachment) || isGenerating) return;
 
+        // Abort voice listening immediately on send to prevent transcription updates to cleared input
+        if (isListening) {
+            abortListening();
+        }
+
         const activeChat = chats.find(c => c.id === currentChatId);
         if (!activeChat) return;
 
@@ -356,19 +430,23 @@ document.addEventListener('DOMContentLoaded', () => {
         welcomeContainer.style.display = 'none';
         messagesList.style.display = 'flex';
 
-        // Append User UI
-        appendMessageUI('user', text, userMsg.image);
+        // Append User UI (pass array index)
+        appendMessageUI('user', text, userMsg.image, false, activeChat.messages.length - 1);
 
         // Reset Input Bar & Preview
         userInput.value = '';
         userInput.style.height = 'auto';
         clearAttachment();
 
-        // Prepare Assistant Streaming UI
+        // Run streaming assistant response call
+        await getAssistantResponse(activeChat);
+    }
+
+    async function getAssistantResponse(activeChat) {
         isGenerating = true;
         setGeneratingState(true);
 
-        const aiRow = appendMessageUI('model', '', null, true);
+        const aiRow = appendMessageUI('model', '', null, true, activeChat.messages.length);
         const bubble = aiRow.querySelector('.message-bubble');
 
         let fullAiText = '';
@@ -430,17 +508,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         } catch (e) {
                             if (e.message !== 'Unexpected end of JSON input') {
                                 console.error('Error parsing SSE data:', e);
+                                throw e;
                             }
                         }
                     }
                 }
             }
 
-            // Streaming finished cleanly
+            // Remove streaming skeleton state and final render with index
+            aiRow.remove();
+            
             activeChat.messages.push({ role: 'model', content: fullAiText });
             saveChatsToStorage();
 
+            // Append clean final model UI bubble
+            appendMessageUI('model', fullAiText, null, false, activeChat.messages.length - 1);
+
         } catch (err) {
+            aiRow.remove();
+            
             if (err.name === 'AbortError') {
                 fullAiText += ' *(Response stopped by user)*';
             } else {
@@ -450,14 +536,65 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 fullAiText += `\n\n**Error**: ${msg}`;
             }
-            bubble.innerHTML = window.marked ? marked.parse(fullAiText) : escapeHtml(fullAiText);
+            
             activeChat.messages.push({ role: 'model', content: fullAiText });
             saveChatsToStorage();
+            appendMessageUI('model', fullAiText, null, false, activeChat.messages.length - 1);
         } finally {
             isGenerating = false;
             setGeneratingState(false);
             abortController = null;
         }
+    }
+
+    // --- INLINE USER MESSAGE EDITING (Like Real Gemini) ---
+    function startInlineEdit(row, originalContent, index) {
+        const contentWrapper = row.querySelector('.message-content-wrapper');
+        const originalHtml = contentWrapper.innerHTML;
+
+        contentWrapper.innerHTML = `
+            <div class="message-edit-container">
+                <textarea class="message-edit-textarea">${escapeHtml(originalContent)}</textarea>
+                <div class="message-edit-buttons">
+                    <button class="btn btn-secondary btn-sm cancel-edit-btn">Cancel</button>
+                    <button class="btn btn-primary btn-sm save-edit-btn">Save & Submit</button>
+                </div>
+            </div>
+        `;
+
+        const textarea = contentWrapper.querySelector('.message-edit-textarea');
+        const cancelBtn = contentWrapper.querySelector('.cancel-edit-btn');
+        const saveBtn = contentWrapper.querySelector('.save-edit-btn');
+
+        // Focus and select end of text
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+
+        cancelBtn.addEventListener('click', () => {
+            const activeChat = chats.find(c => c.id === currentChatId);
+            if (activeChat) {
+                renderMessages(activeChat.messages);
+            }
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            const newText = textarea.value.trim();
+            if (!newText) return;
+
+            const activeChat = chats.find(c => c.id === currentChatId);
+            if (!activeChat) return;
+
+            // Update user message content and truncate thread at this point
+            activeChat.messages[index].content = newText;
+            activeChat.messages = activeChat.messages.slice(0, index + 1);
+            saveChatsToStorage();
+
+            // Refresh message timeline
+            renderMessages(activeChat.messages);
+
+            // Trigger streaming of updated prompt response
+            await getAssistantResponse(activeChat);
+        });
     }
 
     function setGeneratingState(generating) {
@@ -474,8 +611,38 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- COLLAPSIBLE MENU ACTIONS ---
+    if (addBtn) {
+        addBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isMenuOpen = attachmentMenu.classList.toggle('show');
+            if (isMenuOpen) {
+                addBtnIcon.style.transform = 'rotate(45deg)';
+            } else {
+                addBtnIcon.style.transform = 'none';
+            }
+        });
+    }
+
+    // Close floating attachment menu when clicking anywhere else
+    document.addEventListener('click', () => {
+        if (attachmentMenu && attachmentMenu.classList.contains('show')) {
+            attachmentMenu.classList.remove('show');
+            addBtnIcon.style.transform = 'none';
+        }
+    });
+
     // --- FILE ATTACHMENTS ---
-    attachBtn.addEventListener('click', () => fileInput.click());
+    if (attachBtn) {
+        attachBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            fileInput.click();
+            if (attachmentMenu) {
+                attachmentMenu.classList.remove('show');
+                addBtnIcon.style.transform = 'none';
+            }
+        });
+    }
 
     fileInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
@@ -489,15 +656,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 mime_type: file.type || 'image/png',
                 data: base64Data
             };
-
+            
             filePreviewName.textContent = file.name;
-            if (file.type.startsWith('image/')) {
+            if (file.type && file.type.startsWith('image/')) {
                 filePreviewThumb.src = evt.target.result;
                 filePreviewThumb.style.display = 'block';
             } else {
                 filePreviewThumb.style.display = 'none';
             }
             filePreviewBar.style.display = 'block';
+            updateInputDisplay();
         };
         reader.readAsDataURL(file);
     });
@@ -508,6 +676,17 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAttachment = null;
         fileInput.value = '';
         filePreviewBar.style.display = 'none';
+        updateInputDisplay();
+    }
+
+    // --- INPUT DISPLAY SYNC (MIC VS SEND BUTTON) ---
+    function updateInputDisplay() {
+        if (!inputBox) return;
+        if (userInput.value.trim() !== '' || currentAttachment !== null) {
+            inputBox.classList.add('has-input');
+        } else {
+            inputBox.classList.remove('has-input');
+        }
     }
 
     // --- EVENT LISTENERS ---
@@ -516,6 +695,7 @@ document.addEventListener('DOMContentLoaded', () => {
     userInput.addEventListener('input', () => {
         userInput.style.height = 'auto';
         userInput.style.height = Math.min(userInput.scrollHeight, 180) + 'px';
+        updateInputDisplay();
     });
 
     userInput.addEventListener('keydown', (e) => {
@@ -542,7 +722,13 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Sidebar Toggles
-    openSidebarBtn.addEventListener('click', () => sidebar.classList.add('open'));
+    openSidebarBtn.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            sidebar.classList.toggle('open');
+        } else {
+            sidebar.classList.toggle('collapsed');
+        }
+    });
     closeSidebarBtn.addEventListener('click', () => sidebar.classList.remove('open'));
     newChatBtn.addEventListener('click', createNewChat);
 
@@ -579,11 +765,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Model Options
     const modelsList = [
-        { id: 'gemini-3.5-flash', name: 'Gemini 3.5 Flash', desc: 'Fastest & highly intelligent' },
-        { id: 'gemini-3.5-pro', name: 'Gemini 3.5 Pro', desc: 'Ultra capability and coding' },
-        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', desc: 'Fast and versatile standard' },
-        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', desc: 'Highly capable reasoning model' },
-        { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: 'High capability lightweight' },
+        { id: 'gemini-3.5-flash-lite', name: 'Gemini 3.5 Flash Lite', desc: '(Recommended) High capability lightweight model' },
         { id: 'gemini-3.1-flash-lite', name: 'Gemini 3.1 Flash Lite', desc: 'Fast lightweight model' },
         { id: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash Lite', desc: 'Efficient multimodal model' }
     ];
@@ -659,6 +841,183 @@ document.addEventListener('DOMContentLoaded', () => {
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    // --- CAMERA SNAP OPTION ---
+    let cameraStream = null;
+
+    async function startCamera() {
+        try {
+            cameraStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user' },
+                audio: false
+            });
+            cameraVideo.srcObject = cameraStream;
+            cameraModal.classList.add('show');
+        } catch (err) {
+            console.error("Camera access failed:", err);
+            alert("Could not access camera. Please check your browser permissions.");
+        }
+    }
+
+    function stopCamera() {
+        if (cameraStream) {
+            cameraStream.getTracks().forEach(track => track.stop());
+            cameraStream = null;
+        }
+        cameraVideo.srcObject = null;
+        cameraModal.classList.remove('show');
+    }
+
+    if (cameraBtn) {
+        cameraBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            startCamera();
+            if (attachmentMenu) {
+                attachmentMenu.classList.remove('show');
+                addBtnIcon.style.transform = 'none';
+            }
+        });
+    }
+    if (closeCameraModalBtn) closeCameraModalBtn.addEventListener('click', stopCamera);
+    if (cancelCameraBtn) cancelCameraBtn.addEventListener('click', stopCamera);
+
+    if (capturePhotoBtn) {
+        capturePhotoBtn.addEventListener('click', () => {
+            if (!cameraStream) return;
+            
+            cameraCanvas.width = cameraVideo.videoWidth || 640;
+            cameraCanvas.height = cameraVideo.videoHeight || 480;
+            
+            const ctx = cameraCanvas.getContext('2d');
+            
+            // Mirror canvas context drawing for naturally matched snapshot
+            ctx.translate(cameraCanvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
+            
+            const base64Data = cameraCanvas.toDataURL('image/jpeg').split(',')[1];
+            
+            currentAttachment = {
+                name: `snapshot_${Date.now()}.jpg`,
+                mime_type: 'image/jpeg',
+                data: base64Data
+            };
+            
+            filePreviewName.textContent = currentAttachment.name;
+            filePreviewThumb.src = `data:image/jpeg;base64,${base64Data}`;
+            filePreviewThumb.style.display = 'block';
+            filePreviewBar.style.display = 'block';
+            
+            updateInputDisplay();
+            stopCamera();
+        });
+    }
+
+    // --- MICROPHONE VOICE TYPING ---
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let isListening = false;
+    let baseText = '';
+
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+            if (!isListening) return;
+
+            let finalSegments = [];
+            let interimSegments = [];
+
+            // Rebuild speech segments dynamically to insert spaces and strip default periods (.)
+            for (let i = 0; i < event.results.length; ++i) {
+                const alt = event.results[i] && event.results[i][0];
+                const rawText = (alt && alt.transcript) ? alt.transcript : '';
+                const cleanedText = rawText.trim().replace(/\.$/, "").trim(); // Strip trailing period safely
+                
+                if (event.results[i].isFinal) {
+                    if (cleanedText) finalSegments.push(cleanedText);
+                } else {
+                    if (cleanedText) interimSegments.push(cleanedText);
+                }
+            }
+            
+            const finalTranscript = finalSegments.join(' ');
+            const interimTranscript = interimSegments.join(' ');
+            
+            // Build text output dynamically with proper sentence spacing
+            let output = baseText;
+            if (finalTranscript) {
+                output += (output ? ' ' : '') + finalTranscript;
+            }
+            if (interimTranscript) {
+                output += (output ? ' ' : '') + interimTranscript;
+            }
+            
+            userInput.value = output;
+            
+            // Auto resize input textarea
+            userInput.dispatchEvent(new Event('input'));
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            stopListening();
+        };
+
+        recognition.onend = () => {
+            stopListening();
+        };
+    }
+
+    function startListening() {
+        if (!recognition) return;
+        try {
+            baseText = userInput.value; // Store text currently in the box
+            recognition.start();
+            isListening = true;
+            micBtn.classList.add('recording');
+            micBtn.title = "Stop Listening";
+        } catch (err) {
+            console.error("Failed to start speech recognition:", err);
+        }
+    }
+
+    function stopListening() {
+        if (!recognition) return;
+        try {
+            recognition.stop();
+        } catch (err) {}
+        isListening = false;
+        micBtn.classList.remove('recording');
+        micBtn.title = "Voice Typing";
+    }
+
+    function abortListening() {
+        if (!recognition) return;
+        try {
+            recognition.abort(); // Immediately cut off the recording session
+        } catch (err) {}
+        isListening = false;
+        micBtn.classList.remove('recording');
+        micBtn.title = "Voice Typing";
+    }
+
+    if (micBtn) {
+        micBtn.addEventListener('click', () => {
+            if (!recognition) {
+                alert("Speech recognition is not supported in this browser. Please try Chrome, Edge, or Safari.");
+                return;
+            }
+            if (isListening) {
+                abortListening(); // Stop instantly
+            } else {
+                startListening();
+            }
+        });
     }
 
     // Start App
