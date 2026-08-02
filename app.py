@@ -4,6 +4,7 @@ import asyncio
 import base64
 import traceback
 import time
+import sqlite3
 from collections import defaultdict
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, Request, HTTPException, Header
@@ -13,6 +14,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+
+# Initialize SQLite Database for Account Synced History
+def init_db():
+    conn = sqlite3.connect("chats.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_chats (
+            email TEXT PRIMARY KEY,
+            chats_json TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 # Load environment variables
 load_dotenv()
@@ -162,7 +179,7 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
         traceback.print_exc()
         return JSONResponse({"detail": f"Invalid request body or API Key missing: {str(e)}"}, status_code=400)
 
-    async def stream_generator():
+    def stream_generator():
         try:
             client = genai.Client(api_key=api_key)
             
@@ -192,17 +209,17 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
                 system_instruction=system_instruction if system_instruction else None
             )
 
-            response = await client.aio.models.generate_content_stream(
+            response = client.models.generate_content_stream(
                 model=model,
                 contents=raw_contents,
                 config=config
             )
 
-            async for chunk in response:
+            for chunk in response:
                 text_content = chunk.text if hasattr(chunk, "text") and chunk.text else ""
                 if text_content:
                     yield f"data: {json.dumps({'text': text_content})}\n\n"
-                    await asyncio.sleep(0.01)
+                    time.sleep(0.01)
 
             yield f"data: {json.dumps({'done': True})}\n\n"
 
@@ -213,6 +230,55 @@ async def chat_stream(raw_request: Request, x_gemini_api_key: Optional[str] = He
             yield f"data: {json.dumps({'error': err_msg})}\n\n"
 
     return StreamingResponse(stream_generator(), media_type="text/event-stream")
+
+@app.post("/api/sync/save")
+@app.post("/api/sync/save/")
+async def sync_save(request: Request):
+    try:
+        body = await request.json()
+        email = body.get("email", "").lower().strip()
+        chats_data = body.get("chats", [])
+        if not email:
+            return JSONResponse({"status": "error", "message": "Email is required"}, status_code=400)
+        
+        chats_json = json.dumps(chats_data)
+        conn = sqlite3.connect("chats.db")
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO user_chats (email, chats_json, updated_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(email) DO UPDATE SET
+                chats_json = excluded.chats_json,
+                updated_at = CURRENT_TIMESTAMP
+        """, (email, chats_json))
+        conn.commit()
+        conn.close()
+        return {"status": "success", "message": "Chats synced successfully"}
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
+
+@app.get("/api/sync/load")
+@app.get("/api/sync/load/")
+async def sync_load(email: str):
+    try:
+        email = email.lower().strip()
+        if not email:
+            return JSONResponse({"status": "error", "message": "Email is required"}, status_code=400)
+        
+        conn = sqlite3.connect("chats.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT chats_json FROM user_chats WHERE email = ?", (email,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return JSONResponse(json.loads(row[0]))
+        else:
+            return JSONResponse([])
+    except Exception as e:
+        traceback.print_exc()
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/")
 async def get_index():

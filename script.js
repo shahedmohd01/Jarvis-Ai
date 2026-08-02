@@ -437,13 +437,34 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function syncChatsToCloud() {
-        if (!db || !currentUser || isFirebasePlaceholder) return;
-        try {
-            const userDocRef = doc(db, "users", currentUser.uid);
-            const validChats = chats.filter(c => c && c.id);
-            await setDoc(userDocRef, { chats: validChats }, { merge: true });
-        } catch (err) {
-            console.error("Failed to sync chats to Firestore:", err);
+        if (!currentUser) return;
+        
+        // 1. Sync to Firestore (if configured)
+        if (db && !isFirebasePlaceholder) {
+            try {
+                const userDocRef = doc(db, "users", currentUser.uid);
+                const validChats = chats.filter(c => c && c.id);
+                await setDoc(userDocRef, { chats: validChats }, { merge: true });
+            } catch (err) {
+                console.error("Failed to sync chats to Firestore:", err);
+            }
+        }
+
+        // 2. Sync to Backend SQLite (Reliable Fallback)
+        if (currentUser.email) {
+            try {
+                const validChats = chats.filter(c => c && c.id);
+                await fetch(getApiUrl('/api/sync/save'), {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: currentUser.email.toLowerCase().trim(),
+                        chats: validChats
+                    })
+                });
+            } catch (err) {
+                console.error("Failed to sync chats to custom backend:", err);
+            }
         }
     }
 
@@ -487,8 +508,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (isUser) {
             bodyHtml += `<div class="message-bubble">${escapeHtml(content)}</div>`;
         } else {
-            const parsedMarkdown = window.marked ? marked.parse(content || '') : escapeHtml(content);
-            bodyHtml += `<div class="message-bubble">${parsedMarkdown}</div>`;
+            if (isStreaming && (!content || content.trim() === '')) {
+                bodyHtml += `
+                    <div class="message-bubble">
+                        <div class="typing-indicator">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                const parsedMarkdown = window.marked ? marked.parse(content || '') : escapeHtml(content);
+                bodyHtml += `<div class="message-bubble">${parsedMarkdown}</div>`;
+            }
         }
 
         // Copy and Edit actions bar below bubbles
@@ -1552,43 +1585,66 @@ document.addEventListener('DOMContentLoaded', () => {
             createNewChat();
         }
 
-        // 2. Load and merge from Firestore cloud sync
-        if (!db || isFirebasePlaceholder) return;
-        try {
-            const userDocRef = doc(db, "users", user.uid);
-            const docSnap = await getDoc(userDocRef);
-            if (docSnap.exists()) {
-                const cloudData = docSnap.data();
-                if (cloudData && Array.isArray(cloudData.chats)) {
-                    cloudData.chats.forEach(chat => {
-                        if (chat && chat.id) {
-                            const existing = mergedMap.get(chat.id);
-                            const chatMsgs = chat.messages ? chat.messages.length : 0;
-                            const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
-                            if (!existing || chatMsgs >= existingMsgs) {
-                                mergedMap.set(chat.id, chat);
-                            }
-                        }
-                    });
-
-                    chats = Array.from(mergedMap.values());
-                    chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-
-                    // Save merged back to storage
-                    const jsonStr = JSON.stringify(chats);
-                    keys.forEach(key => localStorage.setItem(key, jsonStr));
-
-                    // Refresh history and selection
-                    renderHistory();
-                    if (currentChatId && chats.some(c => c.id === currentChatId)) {
-                        selectChat(currentChatId);
-                    } else if (chats.length > 0) {
-                        selectChat(chats[0].id);
+        // Merge incoming chats helper
+        function mergeIncomingChats(incomingChats) {
+            if (!Array.isArray(incomingChats)) return;
+            let updated = false;
+            incomingChats.forEach(chat => {
+                if (chat && chat.id) {
+                    const existing = mergedMap.get(chat.id);
+                    const chatMsgs = chat.messages ? chat.messages.length : 0;
+                    const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
+                    if (!existing || chatMsgs >= existingMsgs) {
+                        mergedMap.set(chat.id, chat);
+                        updated = true;
                     }
                 }
+            });
+
+            if (updated) {
+                chats = Array.from(mergedMap.values());
+                chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+                const jsonStr = JSON.stringify(chats);
+                keys.forEach(key => localStorage.setItem(key, jsonStr));
+
+                renderHistory();
+                if (currentChatId && chats.some(c => c.id === currentChatId)) {
+                    selectChat(currentChatId);
+                } else if (chats.length > 0) {
+                    selectChat(chats[0].id);
+                }
             }
-        } catch (err) {
-            console.error("Error loading chats from Firestore:", err);
+        }
+
+        // 2. Load and merge from Firestore cloud sync
+        if (db && !isFirebasePlaceholder) {
+            try {
+                const userDocRef = doc(db, "users", user.uid);
+                const docSnap = await getDoc(userDocRef);
+                if (docSnap.exists()) {
+                    const cloudData = docSnap.data();
+                    if (cloudData && Array.isArray(cloudData.chats)) {
+                        mergeIncomingChats(cloudData.chats);
+                    }
+                }
+            } catch (err) {
+                console.error("Error loading chats from Firestore:", err);
+            }
+        }
+
+        // 3. Load and merge from custom Backend SQLite
+        if (user.email) {
+            try {
+                const encEmail = encodeURIComponent(user.email.toLowerCase().trim());
+                const response = await fetch(getApiUrl(`/api/sync/load?email=${encEmail}`));
+                if (response.ok) {
+                    const cloudChats = await response.json();
+                    mergeIncomingChats(cloudChats);
+                }
+            } catch (err) {
+                console.error("Error loading chats from custom backend:", err);
+            }
         }
     }
 
