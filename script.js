@@ -6,12 +6,13 @@ import { getAuth, signInAnonymously, signInWithPopup, GoogleAuthProvider, signIn
 // ==========================================================================
 // Replace this placeholder config with your actual Firebase Project keys from Firebase Console
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_PROJECT_ID.appspot.com",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyDnjcsDE6uOTnsdJWvZP_QYdEQ6bkkOXK4",
+    authDomain: "jarvis-ai-713ff.firebaseapp.com",
+    projectId: "jarvis-ai-713ff",
+    storageBucket: "jarvis-ai-713ff.firebasestorage.app",
+    messagingSenderId: "194615172927",
+    appId: "1:194615172927:web:c47cfd4ee00b72998dfd8a",
+    measurementId: "G-RQ2WN5S6V8"
 };
 
 // Check if placeholder credentials are still present
@@ -154,7 +155,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatSearchInput = document.getElementById('chatSearchInput');
     const themeToggleBtn = document.getElementById('themeToggleBtn');
     const apiStatusText = document.getElementById('apiStatusText');
-    
+
     // Header Elements
     const modelPickerBtn = document.getElementById('modelPickerBtn');
     const currentModelName = document.getElementById('currentModelName');
@@ -162,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusBadge = document.getElementById('statusBadge');
     const statusLabel = document.getElementById('statusLabel');
     const clearChatBtn = document.getElementById('clearChatBtn');
-    
+
     // Chat Elements
     const chatViewport = document.getElementById('chatViewport');
     const welcomeContainer = document.getElementById('welcomeContainer');
@@ -218,11 +219,11 @@ document.addEventListener('DOMContentLoaded', () => {
         marked.setOptions({
             gfm: true,
             breaks: true,
-            highlight: function(code, lang) {
+            highlight: function (code, lang) {
                 if (lang && hljs.getLanguage(lang)) {
                     try {
                         return hljs.highlight(code, { language: lang }).value;
-                    } catch (err) {}
+                    } catch (err) { }
                 }
                 return hljs.highlightAuto(code).value;
             }
@@ -273,7 +274,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (apiKey) headers['x-gemini-api-key'] = apiKey;
             const res = await fetch(getApiUrl('/api/health'), { headers });
             const data = await res.json();
-            
+
             if (data.api_key_configured) {
                 apiStatusText.textContent = 'API Ready';
                 apiStatusText.style.color = '#10b981';
@@ -317,7 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function selectChat(chatId) {
         currentChatId = chatId;
         const activeChat = chats.find(c => c.id === chatId);
-        
+
         // Highlight active item in sidebar
         document.querySelectorAll('.history-item').forEach(item => {
             item.classList.toggle('active', item.dataset.id === chatId);
@@ -408,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
             row.dataset.index = index;
         }
 
-        const avatarHtml = isUser 
+        const avatarHtml = isUser
             ? `<div class="message-avatar">You</div>`
             : `<div class="message-avatar">
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L14.5 9.5L22 12L14.5 14.5L12 22L9.5 14.5L2 12L9.5 9.5L12 2Z" fill="#fff" stroke="none"/></svg>
@@ -481,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         messagesList.appendChild(row);
-        
+
         // Add Copy Code Buttons for Assistant messages
         if (!isUser) {
             enhanceCodeBlocks(row);
@@ -648,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Remove streaming skeleton state and final render with index
             aiRow.remove();
-            
+
             activeChat.messages.push({ role: 'model', content: fullAiText });
             saveChatsToStorage();
 
@@ -657,7 +658,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         } catch (err) {
             aiRow.remove();
-            
+
             if (err.name === 'AbortError') {
                 fullAiText += ' *(Response stopped by user)*';
             } else {
@@ -667,7 +668,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 fullAiText += `\n\n**Error**: ${msg}`;
             }
-            
+
             activeChat.messages.push({ role: 'model', content: fullAiText });
             saveChatsToStorage();
             appendMessageUI('model', fullAiText, null, false, activeChat.messages.length - 1);
@@ -787,7 +788,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 mime_type: file.type || 'image/png',
                 data: base64Data
             };
-            
+
             filePreviewName.textContent = file.name;
             if (file.type && file.type.startsWith('image/')) {
                 filePreviewThumb.src = evt.target.result;
@@ -821,7 +822,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- EVENT LISTENERS ---
-    
+
     // Auto Resize Input Textarea
     userInput.addEventListener('input', () => {
         userInput.style.height = 'auto';
@@ -948,7 +949,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Persona Modal
     personaBtn.addEventListener('click', () => personaModal.classList.add('show'));
     closePersonaModalBtn.addEventListener('click', () => personaModal.classList.remove('show'));
-    
+
     chipBtns.forEach(chip => {
         chip.addEventListener('click', () => {
             chipBtns.forEach(c => c.classList.remove('active'));
@@ -1016,30 +1017,30 @@ document.addEventListener('DOMContentLoaded', () => {
     if (capturePhotoBtn) {
         capturePhotoBtn.addEventListener('click', () => {
             if (!cameraStream) return;
-            
+
             cameraCanvas.width = cameraVideo.videoWidth || 640;
             cameraCanvas.height = cameraVideo.videoHeight || 480;
-            
+
             const ctx = cameraCanvas.getContext('2d');
-            
+
             // Mirror canvas context drawing for naturally matched snapshot
             ctx.translate(cameraCanvas.width, 0);
             ctx.scale(-1, 1);
             ctx.drawImage(cameraVideo, 0, 0, cameraCanvas.width, cameraCanvas.height);
-            
+
             const base64Data = cameraCanvas.toDataURL('image/jpeg').split(',')[1];
-            
+
             currentAttachment = {
                 name: `snapshot_${Date.now()}.jpg`,
                 mime_type: 'image/jpeg',
                 data: base64Data
             };
-            
+
             filePreviewName.textContent = currentAttachment.name;
             filePreviewThumb.src = `data:image/jpeg;base64,${base64Data}`;
             filePreviewThumb.style.display = 'block';
             filePreviewBar.style.display = 'block';
-            
+
             updateInputDisplay();
             stopCamera();
         });
@@ -1068,17 +1069,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 const alt = event.results[i] && event.results[i][0];
                 const rawText = (alt && alt.transcript) ? alt.transcript : '';
                 const cleanedText = rawText.trim().replace(/\.$/, "").trim(); // Strip trailing period safely
-                
+
                 if (event.results[i].isFinal) {
                     if (cleanedText) finalSegments.push(cleanedText);
                 } else {
                     if (cleanedText) interimSegments.push(cleanedText);
                 }
             }
-            
+
             const finalTranscript = finalSegments.join(' ');
             const interimTranscript = interimSegments.join(' ');
-            
+
             // Build text output dynamically with proper sentence spacing
             let output = baseText;
             if (finalTranscript) {
@@ -1087,9 +1088,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (interimTranscript) {
                 output += (output ? ' ' : '') + interimTranscript;
             }
-            
+
             userInput.value = output;
-            
+
             // Auto resize input textarea
             userInput.dispatchEvent(new Event('input'));
         };
@@ -1121,7 +1122,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!recognition) return;
         try {
             recognition.stop();
-        } catch (err) {}
+        } catch (err) { }
         isListening = false;
         micBtn.classList.remove('recording');
         micBtn.title = "Voice Typing";
@@ -1131,7 +1132,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!recognition) return;
         try {
             recognition.abort(); // Immediately cut off the recording session
-        } catch (err) {}
+        } catch (err) { }
         isListening = false;
         micBtn.classList.remove('recording');
         micBtn.title = "Voice Typing";
@@ -1176,7 +1177,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Set user profile info
             const displayName = user.displayName || (user.isAnonymous ? 'Guest User' : user.email.split('@')[0]);
             if (userNameEl) userNameEl.textContent = displayName;
-            
+
             if (user.email && !user.isAnonymous) {
                 if (userEmailEl) {
                     userEmailEl.textContent = user.email;
