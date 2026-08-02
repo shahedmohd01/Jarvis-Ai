@@ -1074,18 +1074,10 @@ textarea {
     pointer-events: none;
 }
 
-/* Responsive display of center brand on mobile */
+/* Hide center brand completely on mobile to maximize space */
 @media (max-width: 768px) {
-    /* Override desktop hide rule: show brand by default on mobile when sidebar drawer is closed */
-    .sidebar:not(.collapsed) ~ .main-content .header-center-brand {
-        opacity: 1 !important;
-        pointer-events: auto !important;
-    }
-
-    /* Hide brand on mobile only when the sidebar drawer is open */
-    .sidebar.open ~ .main-content .header-center-brand {
-        opacity: 0 !important;
-        pointer-events: none !important;
+    .header-center-brand {
+        display: none !important;
     }
 }
 
