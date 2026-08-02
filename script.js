@@ -766,12 +766,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const headers = { 'Content-Type': 'application/json' };
 
-            const response = await fetch(getApiUrl('/api/chat/stream'), {
-                method: 'POST',
-                headers: headers,
-                body: JSON.stringify(payload),
-                signal: abortController.signal
-            });
+            // Auto-retry logic for Render free-tier cold starts (server wakes in ~30s)
+            let response;
+            const MAX_RETRIES = 4;
+            const RETRY_DELAY_MS = 8000;
+            for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+                try {
+                    response = await fetch(getApiUrl('/api/chat/stream'), {
+                        method: 'POST',
+                        headers: headers,
+                        body: JSON.stringify(payload),
+                        signal: abortController.signal
+                    });
+                    break; // Success — exit retry loop
+                } catch (fetchErr) {
+                    if (fetchErr.name === 'AbortError') throw fetchErr; // User stopped
+                    if (attempt < MAX_RETRIES) {
+                        // Show waking-up hint inside the AI bubble
+                        bubble.innerHTML = `<span style="opacity:0.6; font-style:italic">⏳ Waking up server... (attempt ${attempt}/${MAX_RETRIES - 1})</span>`;
+                        await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+                    } else {
+                        throw fetchErr; // All retries exhausted
+                    }
+                }
+            }
+
+            // Clear the waking-up message before streaming real content
+            bubble.innerHTML = '';
 
             if (!response.ok) {
                 const errJson = await response.json().catch(() => ({ detail: `HTTP ${response.status}: ${response.statusText}` }));
@@ -832,10 +853,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 fullAiText += ' *(Response stopped by user)*';
             } else {
                 let msg = err.message || 'Unknown error';
-                if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
-                    msg = 'Failed to connect to the AI backend. The server may be sleeping (free tier). Please wait 30 seconds and try again.';
+                if (msg === 'Failed to fetch' || msg.includes('NetworkError') || msg.includes('fetch')) {
+                    msg = '⚠️ Could not reach the AI backend after multiple attempts. The server may still be starting up. Please wait a moment and try sending your message again.';
                 }
-                fullAiText += `\n\n**Error**: ${msg}`;
+                fullAiText += `\n\n${msg}`;
             }
 
             activeChat.messages.push({ role: 'model', content: fullAiText });
