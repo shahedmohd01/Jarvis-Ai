@@ -1308,6 +1308,36 @@ textarea {
     border-radius: var(--radius-sm) !important;
 }
 
+.icon-text-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.camera-modal-footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.generating-stop-btn {
+    background: #ef4444 !important;
+    color: #ffffff !important;
+    border: none !important;
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.4) !important;
+    animation: pulseStop 1.5s infinite ease-in-out;
+}
+
+.generating-stop-btn:hover {
+    background: #dc2626 !important;
+}
+
+@keyframes pulseStop {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+}
+
 .backend-status-badge {
     display: flex;
     align-items: center;
@@ -1321,6 +1351,7 @@ textarea {
     color: var(--text-muted);
     transition: color 0.3s;
 }
+
 
 /* ==========================================================================
    AUTHENTICATION OVERLAY STYLING

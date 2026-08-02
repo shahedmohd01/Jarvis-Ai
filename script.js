@@ -400,9 +400,23 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function getUserStorageKeys(user) {
+        if (!user) return ['mini_gpt_chats_guest'];
+        const keys = [];
+        if (user.uid) keys.push(`mini_gpt_chats_${user.uid}`);
+        if (user.email) {
+            const cleanEmail = btoa(user.email.toLowerCase().trim()).replace(/=/g, '');
+            keys.push(`mini_gpt_chats_usr_${cleanEmail}`);
+        }
+        return keys;
+    }
+
     function saveChatsToStorage() {
-        const key = currentUser ? `mini_gpt_chats_${currentUser.uid}` : 'mini_gpt_chats_guest';
-        localStorage.setItem(key, JSON.stringify(chats));
+        if (!currentUser) return;
+        const keys = getUserStorageKeys(currentUser);
+        const validChats = chats.filter(c => c && c.id);
+        const jsonStr = JSON.stringify(validChats);
+        keys.forEach(key => localStorage.setItem(key, jsonStr));
     }
 
     // --- MESSAGES RENDERING ---
@@ -543,10 +557,40 @@ document.addEventListener('DOMContentLoaded', () => {
         chatViewport.scrollTop = chatViewport.scrollHeight;
     }
 
+    function setGeneratingState(busy) {
+        isGenerating = busy;
+        if (!sendBtn) return;
+        if (busy) {
+            sendBtn.classList.add('generating-stop-btn');
+            sendBtn.title = 'Stop Generating';
+            sendBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+                    <rect x="5" y="5" width="14" height="14" rx="2" />
+                </svg>
+            `;
+            if (inputBox) inputBox.classList.add('has-input');
+            if (userInput) userInput.disabled = true;
+        } else {
+            sendBtn.classList.remove('generating-stop-btn');
+            sendBtn.title = 'Send Message';
+            sendBtn.innerHTML = `
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+                </svg>
+            `;
+            if (userInput) {
+                userInput.disabled = false;
+                userInput.focus();
+            }
+            updateInputDisplay();
+        }
+    }
+
     // --- SEND MESSAGE & STREAMING ---
     async function sendMessage(textPrompt = null) {
+        if (isGenerating) return; // Lock out secondary generation requests
         const text = textPrompt || userInput.value.trim();
-        if ((!text && !currentAttachment) || isGenerating) return;
+        if (!text && !currentAttachment) return;
 
         // Abort voice listening immediately on send to prevent transcription updates to cleared input
         if (isListening) {
@@ -981,22 +1025,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- CAMERA SNAP OPTION ---
     let cameraStream = null;
-    let cameraFacingMode = 'user';
+    let cameraFacingMode = 'environment'; // Default to main/rear camera on mobile phones
     const switchCameraBtn = document.getElementById('switchCameraBtn');
+    const nativeCameraBtn = document.getElementById('nativeCameraBtn');
+    const nativeCameraInput = document.getElementById('nativeCameraInput');
 
-    async function startCamera(facingMode = 'user') {
+    async function startCamera(facingMode = 'environment') {
         stopCameraTracksOnly();
         cameraFacingMode = facingMode;
         try {
             cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: facingMode },
+                video: { facingMode: { ideal: facingMode } },
                 audio: false
             });
             cameraVideo.srcObject = cameraStream;
             cameraModal.classList.add('show');
         } catch (err) {
             console.error("Camera access failed:", err);
-            // Fallback try without facingMode constraint if specific mode fails
             try {
                 cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                 cameraVideo.srcObject = cameraStream;
@@ -1022,15 +1067,44 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (switchCameraBtn) {
         switchCameraBtn.addEventListener('click', () => {
-            const nextMode = cameraFacingMode === 'user' ? 'environment' : 'user';
+            const nextMode = cameraFacingMode === 'environment' ? 'user' : 'environment';
             startCamera(nextMode);
+        });
+    }
+
+    if (nativeCameraBtn && nativeCameraInput) {
+        nativeCameraBtn.addEventListener('click', () => {
+            stopCamera();
+            nativeCameraInput.click();
+        });
+
+        nativeCameraInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                const base64Data = evt.target.result.split(',')[1];
+                currentAttachment = {
+                    name: file.name || `photo_${Date.now()}.jpg`,
+                    mime_type: file.type || 'image/jpeg',
+                    data: base64Data
+                };
+
+                filePreviewName.textContent = currentAttachment.name;
+                filePreviewThumb.src = evt.target.result;
+                filePreviewThumb.style.display = 'block';
+                filePreviewBar.style.display = 'block';
+                updateInputDisplay();
+            };
+            reader.readAsDataURL(file);
         });
     }
 
     if (cameraBtn) {
         cameraBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            startCamera('user');
+            startCamera('environment'); // Open main camera by default
             if (attachmentMenu) {
                 attachmentMenu.classList.remove('show');
                 addBtnIcon.style.transform = 'none';
@@ -1230,7 +1304,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             // Load user-specific chat history
-            loadUserChats(user.uid);
+            loadUserChats(user);
         } else {
             currentUser = null;
             if (authOverlay) authOverlay.style.display = 'flex';
@@ -1254,10 +1328,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function loadUserChats(uid) {
-        chats = JSON.parse(localStorage.getItem('mini_gpt_chats_' + uid) || '[]');
-        renderHistory();
+    function loadUserChats(user) {
+        if (!user) return;
+        const keys = getUserStorageKeys(user);
+        const mergedMap = new Map();
+
+        keys.forEach(key => {
+            try {
+                const stored = JSON.parse(localStorage.getItem(key) || '[]');
+                stored.forEach(chat => {
+                    if (chat && chat.id) {
+                        const existing = mergedMap.get(chat.id);
+                        const chatMsgs = chat.messages ? chat.messages.length : 0;
+                        const existingMsgs = (existing && existing.messages) ? existing.messages.length : -1;
+                        if (!existing || chatMsgs >= existingMsgs) {
+                            mergedMap.set(chat.id, chat);
+                        }
+                    }
+                });
+            } catch (e) {
+                console.error("Failed to parse stored chat for key:", key, e);
+            }
+        });
+
+        chats = Array.from(mergedMap.values());
+        chats.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
         if (chats.length > 0) {
+            saveChatsToStorage(); // persist merged chats back to all user keys
+            renderHistory();
             selectChat(chats[0].id);
         } else {
             createNewChat();
